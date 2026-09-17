@@ -1,0 +1,1603 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, shrink-to-fit=no">
+    <title>NutriTrack - ระบบจดสารอาหาร & คำนวณ EA</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Kanit -->
+    <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Chart.js for Weight Graph -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Kanit', 'sans-serif'],
+                    },
+                    colors: {
+                        brand: {
+                            50: '#f0fdf4',
+                            100: '#dcfce7',
+                            500: '#22c55e',
+                            600: '#16a34a',
+                            700: '#15803d',
+                            dark: '#0f172a'
+                        },
+                        carb: '#3b82f6',
+                        protein: '#ef4444',
+                        fat: '#f59e0b'
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            font-family: 'Kanit', sans-serif;
+            background-color: #f8fafc;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+            touch-action: pan-x pan-y;
+        }
+        /* ป้องกัน iOS Safari ซูมอัตโนมัติเมื่อกดเลือกช่องกรอกข้อมูล (Input Focus Auto-Zoom Fix) */
+        @media screen and (max-width: 768px) {
+            input[type="text"],
+            input[type="number"],
+            input[type="date"],
+            select,
+            textarea {
+                font-size: 16px !important;
+            }
+        }
+        ::-webkit-scrollbar {
+            width: 4px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+        .hide-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .hide-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+    </style>
+</head>
+<body class="text-slate-800 antialiased min-h-screen pb-20">
+    <div id="app" class="max-w-md mx-auto bg-white min-h-screen shadow-xl relative flex flex-col">
+
+        <!-- Top Header -->
+        <header class="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-100 px-4 py-3 flex items-center justify-between">
+            <div class="flex items-center space-x-2">
+                <div class="w-8 h-8 rounded-full bg-emerald-500 text-white flex items-center justify-center font-bold text-lg shadow-sm">
+                    <i class="fa-solid fa-apple-whole text-sm"></i>
+                </div>
+                <div>
+                    <div class="flex items-baseline space-x-1.5">
+                        <h1 class="text-base font-bold text-slate-800 leading-tight">NutriTrack EA</h1>
+                        <span class="text-[10px] font-normal text-slate-400 italic">by pooh</span>
+                    </div>
+                    <p id="current-date-display" class="text-xs text-slate-400">วันนี้</p>
+                </div>
+            </div>
+            <!-- Date Switcher -->
+            <div class="flex items-center space-x-1 bg-slate-100 p-1 rounded-xl">
+                <button onclick="changeDate(-1)" class="w-7 h-7 flex items-center justify-center text-slate-600 rounded-lg hover:bg-white transition text-xs">
+                    <i class="fa-solid fa-chevron-left"></i>
+                </button>
+                <input type="date" id="date-picker" onchange="onDateSelected(this.value)" class="bg-transparent text-xs font-medium text-slate-700 focus:outline-none cursor-pointer w-24 text-center">
+                <button onclick="changeDate(1)" class="w-7 h-7 flex items-center justify-center text-slate-600 rounded-lg hover:bg-white transition text-xs">
+                    <i class="fa-solid fa-chevron-right"></i>
+                </button>
+            </div>
+        </header>
+
+        <!-- Main Dynamic View Container -->
+        <main class="flex-1 p-4 overflow-y-auto">
+
+            <!-- Combined Dashboard & Food Logging View -->
+            <section id="tab-dashboard" class="space-y-4">
+                <!-- Calorie & Goal Banner -->
+                <div class="bg-gradient-to-br from-emerald-600 to-teal-700 text-white rounded-2xl p-4 shadow-lg relative overflow-hidden">
+                    <div class="absolute -right-6 -bottom-6 opacity-10 text-9xl">
+                        <i class="fa-solid fa-fire"></i>
+                    </div>
+                    <div class="flex justify-between items-start mb-2 relative z-10">
+                        <div>
+                            <span class="text-xs bg-white/20 px-2 py-0.5 rounded-full font-light">เป้าหมายพลังงาน (Reverse EA)</span>
+                            <div class="flex items-baseline space-x-1 mt-1">
+                                <span id="dash-cal-consumed" class="text-3xl font-extrabold">0</span>
+                                <span class="text-sm opacity-80">/ <span id="dash-cal-target">0</span> kcal</span>
+                            </div>
+                        </div>
+                        <div class="text-right">
+                            <span class="text-xs opacity-75">คงเหลือ</span>
+                            <p id="dash-cal-remaining" class="text-2xl font-bold text-emerald-200">0</p>
+                        </div>
+                    </div>
+                    
+                    <!-- Calorie Progress Bar -->
+                    <div class="w-full bg-black/20 rounded-full h-2.5 overflow-hidden mt-3">
+                        <div id="dash-cal-bar" class="bg-white h-full rounded-full transition-all duration-500" style="width: 0%"></div>
+                    </div>
+                    <div class="flex justify-between text-[11px] mt-1 opacity-80">
+                        <span>ทานแล้ว <span id="dash-cal-percent">0</span>%</span>
+                        <span>เป้าหมาย EA: <span id="dash-ea-value">30</span> kcal/kg FFM</span>
+                    </div>
+                </div>
+
+                <!-- Macro Breakdown Cards -->
+                <div class="grid grid-cols-3 gap-2">
+                    <!-- Carb Card -->
+                    <div class="bg-blue-50/60 border border-blue-100 rounded-xl p-3 text-center relative overflow-hidden">
+                        <div class="text-xs font-semibold text-blue-600 mb-1">คาร์โบไฮเดรต</div>
+                        <div class="text-base font-bold text-slate-800" id="dash-carb-val">0 / 0g</div>
+                        <div class="text-[10px] text-blue-500 font-medium mt-0.5" id="dash-carb-portion">(0 / 0 ส่วน)</div>
+                        <div class="w-full bg-blue-200 rounded-full h-1.5 mt-2">
+                            <div id="dash-carb-bar" class="bg-blue-500 h-full rounded-full transition-all duration-300" style="width: 0%"></div>
+                        </div>
+                        <div class="text-[10px] text-slate-500 font-medium mt-1">เหลือ <span id="dash-carb-rem" class="font-bold text-slate-700">0g (0 ส่วน)</span></div>
+                    </div>
+
+                    <!-- Protein Card -->
+                    <div class="bg-red-50/60 border border-red-100 rounded-xl p-3 text-center relative overflow-hidden">
+                        <div class="text-xs font-semibold text-red-600 mb-1">โปรตีน</div>
+                        <div class="text-base font-bold text-slate-800" id="dash-protein-val">0 / 0g</div>
+                        <div class="text-[10px] text-red-500 font-medium mt-0.5" id="dash-protein-portion">(0 / 0 ส่วน)</div>
+                        <div class="w-full bg-red-200 rounded-full h-1.5 mt-2">
+                            <div id="dash-protein-bar" class="bg-red-500 h-full rounded-full transition-all duration-300" style="width: 0%"></div>
+                        </div>
+                        <div class="text-[10px] text-slate-500 font-medium mt-1">เหลือ <span id="dash-protein-rem" class="font-bold text-slate-700">0g (0 ส่วน)</span></div>
+                    </div>
+
+                    <!-- Fat Card -->
+                    <div class="bg-amber-50/60 border border-amber-100 rounded-xl p-3 text-center relative overflow-hidden">
+                        <div class="text-xs font-semibold text-amber-600 mb-1">ไขมัน</div>
+                        <div class="text-base font-bold text-slate-800" id="dash-fat-val">0 / 0g</div>
+                        <div class="text-[10px] text-amber-600 font-medium mt-0.5" id="dash-fat-portion">(0 / 0 ส่วน)</div>
+                        <div class="w-full bg-amber-200 rounded-full h-1.5 mt-2">
+                            <div id="dash-fat-bar" class="bg-amber-500 h-full rounded-full transition-all duration-300" style="width: 0%"></div>
+                        </div>
+                        <div class="text-[10px] text-slate-500 font-medium mt-1">เหลือ <span id="dash-fat-rem" class="font-bold text-slate-700">0g (0 ส่วน)</span></div>
+                    </div>
+                </div>
+
+                <!-- Combined Quick Food Logging Section -->
+                <div class="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm space-y-3">
+                    <div class="flex items-center justify-between">
+                        <h2 class="text-sm font-bold text-slate-800 flex items-center gap-2">
+                            <i class="fa-solid fa-pen-to-square text-emerald-600"></i>
+                            จดบันทึกมื้ออาหาร
+                        </h2>
+                        <!-- Mode Toggle Switcher -->
+                        <div class="flex bg-slate-100 p-0.5 rounded-lg text-[11px] font-semibold">
+                            <button id="mode-btn-gram" type="button" onclick="setLogMode('gram')" class="px-2.5 py-1 rounded-md transition bg-white text-emerald-700 shadow-sm">
+                                กรัม (Micro)
+                            </button>
+                            <button id="mode-btn-portion" type="button" onclick="setLogMode('portion')" class="px-2.5 py-1 rounded-md transition text-slate-500 hover:text-slate-800">
+                                ส่วน (Exchange)
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Portion info banner -->
+                    <div id="portion-info-banner" class="hidden bg-emerald-50 border border-emerald-100 p-2.5 rounded-xl text-[11px] text-emerald-800">
+                        <div class="font-bold mb-0.5">อัตราส่วนสารอาหารต่อ 1 ส่วน:</div>
+                        <div class="flex justify-between text-[10px]">
+                            <span>• คาร์บ 1 ส่วน = 30g</span>
+                            <span>• โปรตีน 1 ส่วน = 25g</span>
+                            <span>• ไขมัน 1 ส่วน = 15g</span>
+                        </div>
+                    </div>
+
+                    <!-- Food Input Form -->
+                    <form id="food-form" onsubmit="handleFoodSubmit(event)" class="space-y-3 relative">
+                        <!-- Food Name with Autocomplete Ghost Text -->
+                        <div class="relative">
+                            <label class="block text-[11px] font-semibold text-slate-600 mb-1">ชื่อเมนูอาหาร (ไม่ใส่ก็ได้)</label>
+                            <div class="relative flex items-center">
+                                <!-- Ghost Overlay Layer (Positioned Exactly Behind Input) -->
+                                <div id="autocomplete-ghost" class="absolute inset-0 px-3 py-2 text-sm pointer-events-none flex items-center overflow-hidden whitespace-pre"></div>
+                                <input type="text" id="food-name" autocomplete="off" placeholder="เช่น ข้าวผัดอกไก่..." oninput="handleFoodNameInput(this.value)" onkeydown="handleFoodNameKeyDown(event)" class="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-emerald-500 transition relative z-10 bg-transparent text-slate-800 font-medium">
+                            </div>
+                            <!-- Autocomplete Dropdown List -->
+                            <div id="autocomplete-list" class="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg z-30 max-h-48 overflow-y-auto hidden divide-y divide-slate-100"></div>
+                        </div>
+
+                        <!-- Macro Inputs -->
+                        <div class="grid grid-cols-3 gap-2">
+                            <!-- Carb Input -->
+                            <div>
+                                <label id="label-carb" class="block text-[11px] font-semibold text-blue-600 mb-1">คาร์บ (กรัม)</label>
+                                <input type="number" step="0.1" min="0" id="input-carb" oninput="syncCalculations()" placeholder="0" class="w-full px-2 py-1.5 bg-blue-50/50 border border-blue-200 rounded-xl text-sm font-bold text-slate-800 focus:outline-none focus:border-blue-500 text-center">
+                                <span id="converted-carb" class="block text-[9px] text-slate-400 text-center mt-0.5">= 0 ส่วน</span>
+                            </div>
+
+                            <!-- Protein Input -->
+                            <div>
+                                <label id="label-protein" class="block text-[11px] font-semibold text-red-600 mb-1">โปรตีน (กรัม)</label>
+                                <input type="number" step="0.1" min="0" id="input-protein" oninput="syncCalculations()" placeholder="0" class="w-full px-2 py-1.5 bg-red-50/50 border border-red-200 rounded-xl text-sm font-bold text-slate-800 focus:outline-none focus:border-red-500 text-center">
+                                <span id="converted-protein" class="block text-[9px] text-slate-400 text-center mt-0.5">= 0 ส่วน</span>
+                            </div>
+
+                            <!-- Fat Input -->
+                            <div>
+                                <label id="label-fat" class="block text-[11px] font-semibold text-amber-600 mb-1">ไขมัน (กรัม)</label>
+                                <input type="number" step="0.1" min="0" id="input-fat" oninput="syncCalculations()" placeholder="0" class="w-full px-2 py-1.5 bg-amber-50/50 border border-amber-200 rounded-xl text-sm font-bold text-slate-800 focus:outline-none focus:border-amber-500 text-center">
+                                <span id="converted-fat" class="block text-[9px] text-slate-400 text-center mt-0.5">= 0 ส่วน</span>
+                            </div>
+                        </div>
+
+                        <!-- Calculated Total Calories Banner -->
+                        <div class="bg-slate-900 text-white px-3 py-2 rounded-xl flex justify-between items-center text-xs">
+                            <span class="text-slate-300">พลังงานมื้อนี้:</span>
+                            <span class="text-sm font-bold text-emerald-400"><span id="form-total-cal">0</span> kcal</span>
+                        </div>
+
+                        <button type="submit" class="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white font-bold rounded-xl shadow-md shadow-emerald-600/20 transition flex items-center justify-center space-x-2 text-xs">
+                            <i class="fa-solid fa-plus"></i>
+                            <span>บันทึกมื้อนี้</span>
+                        </button>
+                    </form>
+                </div>
+
+                <!-- Automatic Macro Rebalancing Info Card -->
+                <div class="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
+                    <div class="flex items-center justify-between mb-1">
+                        <div class="flex items-center space-x-2">
+                            <i class="fa-solid fa-arrows-rotate text-emerald-600"></i>
+                            <h3 class="text-xs font-bold text-slate-800">ระบบโยกสารอาหารอัตโนมัติ (Carb ↔ Fat)</h3>
+                        </div>
+                        <!-- Auto-Rebalance Toggle Switch -->
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" id="auto-rebalance-toggle" onchange="toggleAutoRebalance(this.checked)" class="sr-only peer">
+                            <div class="w-8 h-4 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-emerald-600"></div>
+                            <span class="ml-1.5 text-[10px] font-semibold text-slate-600">ทำงาน</span>
+                        </label>
+                    </div>
+                    
+                    <!-- Auto Rebalance Banner Display -->
+                    <div id="auto-rebalance-banner" class="hidden my-2 p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-[11px] text-amber-800 flex items-center justify-between">
+                        <span id="auto-rebalance-text" class="font-medium">⚡ ระบบกำลังโยกสารอาหารให้อัตโนมัติ</span>
+                        <i class="fa-solid fa-bolt text-amber-500"></i>
+                    </div>
+
+                    <p class="text-[11px] text-slate-500">ระบบจะทำการสลับโควต้าระหว่างคาร์บและไขมันให้อัตโนมัติทันทีที่ทานอย่างใดอย่างหนึ่งเกินเป้าหมาย โดยรักษาสมดุลแคลลอรี่และโปรตีนให้คงเดิมเสมอ</p>
+                </div>
+
+                <!-- Today's Log List -->
+                <div class="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
+                    <div class="flex justify-between items-center mb-3">
+                        <h3 class="text-xs font-bold text-slate-800 flex items-center gap-2">
+                            <i class="fa-solid fa-utensils text-emerald-600"></i>
+                            รายการที่บันทึกวันนี้
+                        </h3>
+                    </div>
+
+                    <div id="dash-meals-list" class="space-y-2">
+                        <!-- Dynamic Meal Items Rendered Here -->
+                    </div>
+                </div>
+            </section>
+
+            <!-- Target Settings Tab -->
+            <section id="tab-calc" class="hidden space-y-4">
+                <div class="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
+                    <div class="flex items-center space-x-2 mb-3">
+                        <i class="fa-solid fa-calculator text-emerald-600 text-lg"></i>
+                        <h2 class="text-base font-bold text-slate-800">คำนวณ TDEE & Reverse EA</h2>
+                    </div>
+
+                    <form id="profile-form" onsubmit="saveProfileSettings(event)" class="space-y-4">
+                        
+                        <!-- Gender & Age -->
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-600 mb-1">เพศ</label>
+                                <select id="prof-gender" onchange="calculateFFMAndTargets()" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:outline-none focus:border-emerald-500">
+                                    <option value="male">ชาย</option>
+                                    <option value="female">หญิง</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-600 mb-1">อายุ (ปี)</label>
+                                <input type="number" id="prof-age" value="25" min="10" max="100" oninput="calculateFFMAndTargets()" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:outline-none focus:border-emerald-500">
+                            </div>
+                        </div>
+
+                        <!-- Height & Weight -->
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-600 mb-1">ส่วนสูง (ซม.)</label>
+                                <input type="number" id="prof-height" value="170" step="0.5" oninput="calculateFFMAndTargets()" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:outline-none focus:border-emerald-500">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-600 mb-1">น้ำหนัก (กิโลกรัม)</label>
+                                <input type="number" id="prof-weight" value="65" step="0.1" oninput="calculateFFMAndTargets()" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:outline-none focus:border-emerald-500">
+                            </div>
+                        </div>
+
+                        <!-- Body Fat % -->
+                        <div>
+                            <div class="flex justify-between items-center mb-1">
+                                <label class="text-xs font-semibold text-slate-600">เปอร์เซ็นต์ไขมัน (% Body Fat)</label>
+                                <span class="text-[10px] text-slate-400">*หากไม่ทราบ จะใช้ค่าเฉลี่ย</span>
+                            </div>
+                            <input type="number" id="prof-bf" placeholder="เช่น 15 (ว่างไว้ = ค่าเฉลี่ย)" step="0.1" min="3" max="60" oninput="calculateFFMAndTargets()" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:outline-none focus:border-emerald-500">
+                            <div class="text-[11px] text-emerald-600 font-medium mt-1">
+                                Fat-Free Mass (FFM): <span id="display-ffm" class="font-bold">55.25</span> kg
+                            </div>
+                        </div>
+
+                        <!-- Exercise Energy Expenditure (EEE) -->
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">แคลลอรี่จากการออกกำลังกายเฉลี่ยต่อวัน (EEE)</label>
+                            <input type="number" id="prof-eee" value="300" step="10" min="0" oninput="calculateFFMAndTargets()" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:outline-none focus:border-emerald-500">
+                            <span class="text-[10px] text-slate-400">คำนวณจากแคลลอรี่ที่เผาผลาญจากการออกกำลังกายสัปดาห์ละ 7 วัน</span>
+                        </div>
+
+                        <!-- Target EA Slider -->
+                        <div class="bg-emerald-50/70 border border-emerald-100 p-3 rounded-xl space-y-2">
+                            <div class="flex justify-between items-center">
+                                <label class="text-xs font-bold text-emerald-900">เป้าหมาย Energy Availability (EA)</label>
+                                <span class="text-sm font-extrabold text-emerald-700 bg-white px-2.5 py-0.5 rounded-lg border border-emerald-200" id="display-ea-val">30 kcal/kg FFM</span>
+                            </div>
+                            <input type="range" id="prof-ea" min="15" max="50" step="1" value="30" oninput="calculateFFMAndTargets()" class="w-full accent-emerald-600 cursor-pointer">
+                            <div class="flex justify-between text-[10px] text-emerald-700 font-medium">
+                                <span>15 (ต่ำมาก)</span>
+                                <span>30 (สมดุล/ปกติ)</span>
+                                <span>45+ (สร้างกล้ามเนื้อ)</span>
+                            </div>
+                        </div>
+
+                        <!-- Protein Target Slider -->
+                        <div class="bg-red-50/70 border border-red-100 p-3 rounded-xl space-y-2">
+                            <div class="flex justify-between items-center">
+                                <label class="text-xs font-bold text-red-900">เป้าหมายโปรตีนต่อน้ำหนักตัว</label>
+                                <span class="text-sm font-extrabold text-red-700 bg-white px-2.5 py-0.5 rounded-lg border border-red-200" id="display-prot-val">1.8 g / kg</span>
+                            </div>
+                            <input type="range" id="prof-prot-ratio" min="0.8" max="3.0" step="0.1" value="1.8" oninput="calculateFFMAndTargets()" class="w-full accent-red-600 cursor-pointer">
+                            <div class="flex justify-between text-[10px] text-red-700 font-medium">
+                                <span>0.8g (ทั่วไป)</span>
+                                <span>1.8g-2.2g (คุมอาหาร/สร้างกล้าม)</span>
+                                <span>3.0g (นักกีฬา)</span>
+                            </div>
+                        </div>
+
+                        <!-- Carb vs Fat Ratio Slider -->
+                        <div class="bg-blue-50/70 border border-blue-100 p-3 rounded-xl space-y-2">
+                            <div class="flex justify-between items-center">
+                                <label class="text-xs font-bold text-blue-900">สัดส่วนพลังงาน คาร์บ vs ไขมัน</label>
+                                <span class="text-xs font-extrabold text-blue-800 bg-white px-2.5 py-0.5 rounded-lg border border-blue-200" id="display-carb-fat-ratio">คาร์บ 60% : ไขมัน 40%</span>
+                            </div>
+                            <input type="range" id="prof-carb-ratio" min="1" max="99" step="1" value="60" oninput="calculateFFMAndTargets()" class="w-full accent-blue-600 cursor-pointer">
+                            <div class="flex justify-between text-[10px] text-blue-700 font-medium">
+                                <span>1% (คาร์บน้อยสุด/คีโต)</span>
+                                <span>50% (สมดุล)</span>
+                                <span>99% (คาร์บสูง)</span>
+                            </div>
+                        </div>
+
+                        <!-- Calculated Results Summary Box -->
+                        <div class="bg-slate-900 text-white rounded-xl p-4 space-y-2">
+                            <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wider">สรุปเป้าหมายสารอาหารที่คำนวณได้</h3>
+                            <div class="flex justify-between items-baseline border-b border-slate-800 pb-2">
+                                <span class="text-sm">เป้าหมายพลังงานที่ต้องกิน (EI):</span>
+                                <span class="text-xl font-bold text-emerald-400" id="res-target-cal">0 kcal</span>
+                            </div>
+                            <div class="grid grid-cols-3 gap-2 text-center pt-1">
+                                <div>
+                                    <span class="text-[10px] text-blue-400 font-semibold block">คาร์บ</span>
+                                    <span class="text-sm font-bold text-white" id="res-target-carb">0g</span>
+                                    <span class="text-[10px] text-slate-400 block" id="res-target-carb-p">0 ส่วน</span>
+                                </div>
+                                <div>
+                                    <span class="text-[10px] text-red-400 font-semibold block">โปรตีน</span>
+                                    <span class="text-sm font-bold text-white" id="res-target-prot">0g</span>
+                                    <span class="text-[10px] text-slate-400 block" id="res-target-prot-p">0 ส่วน</span>
+                                </div>
+                                <div>
+                                    <span class="text-[10px] text-amber-400 font-semibold block">ไขมัน</span>
+                                    <span class="text-sm font-bold text-white" id="res-target-fat">0g</span>
+                                    <span class="text-[10px] text-slate-400 block" id="res-target-fat-p">0 ส่วน</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <button type="submit" class="w-full py-3 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white font-bold rounded-xl shadow-md transition">
+                            บันทึกการตั้งค่าเป้าหมาย
+                        </button>
+                    </form>
+                </div>
+
+                <!-- Data Management & Word Report Export Card -->
+                <div class="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm space-y-3">
+                    <div class="flex items-center space-x-2 border-b border-slate-100 pb-2">
+                        <i class="fa-solid fa-file-export text-emerald-600 text-lg"></i>
+                        <h3 class="text-sm font-bold text-slate-800">จัดการข้อมูล & สรุปรายงาน</h3>
+                    </div>
+
+                    <div class="grid grid-cols-1 gap-2 pt-1">
+                        <!-- Export to Word -->
+                        <button type="button" onclick="exportToWord()" class="w-full py-2.5 bg-blue-600 hover:bg-blue-700 active:scale-[0.99] text-white font-bold rounded-xl text-xs flex items-center justify-center space-x-2 shadow-sm transition">
+                            <i class="fa-solid fa-file-word text-sm"></i>
+                            <span>ส่งออกสรุปเป็นไฟล์ Word (.doc)</span>
+                        </button>
+
+                        <div class="grid grid-cols-2 gap-2 pt-1">
+                            <!-- Export Backup JSON -->
+                            <button type="button" onclick="exportBackupJSON()" class="py-2.5 bg-slate-800 hover:bg-slate-900 active:scale-[0.99] text-white font-bold rounded-xl text-xs flex items-center justify-center space-x-1.5 shadow-sm transition">
+                                <i class="fa-solid fa-download"></i>
+                                <span>สำรองข้อมูล (.json)</span>
+                            </button>
+
+                            <!-- Import JSON -->
+                            <button type="button" onclick="triggerImportJSON()" class="py-2.5 bg-slate-100 hover:bg-slate-200 active:scale-[0.99] text-slate-700 font-bold rounded-xl text-xs flex items-center justify-center space-x-1.5 border border-slate-200 transition">
+                                <i class="fa-solid fa-upload"></i>
+                                <span>นำเข้าข้อมูล (Load)</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Hidden File Input for Import -->
+                    <input type="file" id="import-file-input" accept=".json" onchange="handleFileImport(event)" class="hidden">
+                </div>
+            </section>
+
+            <!-- Weight Tracking Tab -->
+            <section id="tab-weight" class="hidden space-y-4">
+                <div class="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
+                    <div class="flex items-center space-x-2 mb-3">
+                        <i class="fa-solid fa-weight-scale text-emerald-600 text-lg"></i>
+                        <h2 class="text-base font-bold text-slate-800">จดบันทึกน้ำหนักตัว & กราฟ</h2>
+                    </div>
+
+                    <!-- Input Weight Form -->
+                    <form onsubmit="handleWeightSubmit(event)" class="flex gap-2 mb-4">
+                        <div class="flex-1">
+                            <input type="number" id="weight-input-val" step="0.1" min="20" max="300" placeholder="น้ำหนักวันนี้ (กก.)" required class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:border-emerald-500">
+                        </div>
+                        <button type="submit" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-sm shadow-sm transition">
+                            บันทึก
+                        </button>
+                    </form>
+
+                    <!-- Chart Container -->
+                    <div class="bg-slate-50 border border-slate-100 rounded-xl p-3 mb-4">
+                        <canvas id="weightChart" class="w-full max-h-52"></canvas>
+                    </div>
+
+                    <!-- History Weight Logs -->
+                    <h3 class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">ประวัติน้ำหนักย้อนหลัง</h3>
+                    <div id="weight-history-list" class="space-y-2 max-h-60 overflow-y-auto">
+                        <!-- Dynamic Weight Entries -->
+                    </div>
+                </div>
+            </section>
+
+            <!-- History Log Tab -->
+            <section id="tab-history" class="hidden space-y-4">
+                <div class="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center space-x-2">
+                            <i class="fa-solid fa-clock-rotate-left text-emerald-600 text-lg"></i>
+                            <h2 class="text-base font-bold text-slate-800">ประวัติบันทึกการกินอาหาร</h2>
+                        </div>
+                    </div>
+                    
+                    <div id="history-logs-container" class="space-y-3">
+                        <!-- Dynamic History Grouped by Date -->
+                    </div>
+                </div>
+            </section>
+
+        </main>
+
+        <!-- Navigation Bar -->
+        <nav class="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white/95 backdrop-blur-md border-t border-slate-200 px-3 py-2 flex justify-around items-center z-40 shadow-lg">
+            <button type="button" onclick="switchTab('tab-dashboard')" id="nav-tab-dashboard" class="nav-btn text-emerald-600 flex flex-col items-center w-16">
+                <i class="fa-solid fa-chart-pie text-lg mb-0.5"></i>
+                <span class="text-[10px] font-medium">สรุป & จด</span>
+            </button>
+            <button type="button" onclick="switchTab('tab-calc')" id="nav-tab-calc" class="nav-btn text-slate-400 hover:text-slate-600 flex flex-col items-center w-16">
+                <i class="fa-solid fa-calculator text-lg mb-0.5"></i>
+                <span class="text-[10px] font-medium">ตั้งเป้าหมาย</span>
+            </button>
+            <button type="button" onclick="switchTab('tab-weight')" id="nav-tab-weight" class="nav-btn text-slate-400 hover:text-slate-600 flex flex-col items-center w-16">
+                <i class="fa-solid fa-chart-line text-lg mb-0.5"></i>
+                <span class="text-[10px] font-medium">น้ำหนัก</span>
+            </button>
+            <button type="button" onclick="switchTab('tab-history')" id="nav-tab-history" class="nav-btn text-slate-400 hover:text-slate-600 flex flex-col items-center w-16">
+                <i class="fa-solid fa-clock-rotate-left text-lg mb-0.5"></i>
+                <span class="text-[10px] font-medium">ประวัติ</span>
+            </button>
+        </nav>
+
+        <!-- Notification Toast -->
+        <div id="toast-msg" class="fixed top-4 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-xs px-4 py-2.5 rounded-full shadow-xl z-50 transition-opacity duration-300 opacity-0 pointer-events-none flex items-center space-x-2">
+            <i class="fa-solid fa-circle-check text-emerald-400"></i>
+            <span id="toast-text">บันทึกเรียบร้อย</span>
+        </div>
+
+        <!-- Edit Food Item Modal -->
+        <div id="edit-meal-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+            <div class="bg-white rounded-2xl max-w-sm w-full p-4 shadow-xl space-y-3">
+                <div class="flex justify-between items-center border-b border-slate-100 pb-2">
+                    <h3 class="font-bold text-slate-800 text-sm">แก้ไขรายการอาหาร</h3>
+                    <button onclick="closeEditMealModal()" class="text-slate-400 hover:text-slate-600">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+                
+                <input type="hidden" id="edit-meal-id">
+                
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">ชื่อเมนู</label>
+                    <input type="text" id="edit-meal-name" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-emerald-500">
+                </div>
+
+                <div class="grid grid-cols-3 gap-2">
+                    <div>
+                        <label class="block text-xs font-semibold text-blue-600 mb-1">คาร์บ (g)</label>
+                        <input type="number" step="0.1" id="edit-meal-carb" class="w-full px-2 py-1.5 bg-blue-50/50 border border-blue-200 rounded-lg text-sm text-center font-bold">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-red-600 mb-1">โปรตีน (g)</label>
+                        <input type="number" step="0.1" id="edit-meal-protein" class="w-full px-2 py-1.5 bg-red-50/50 border border-red-200 rounded-lg text-sm text-center font-bold">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-amber-600 mb-1">ไขมัน (g)</label>
+                        <input type="number" step="0.1" id="edit-meal-fat" class="w-full px-2 py-1.5 bg-amber-50/50 border border-amber-200 rounded-lg text-sm text-center font-bold">
+                    </div>
+                </div>
+
+                <div class="flex gap-2 pt-2">
+                    <button onclick="closeEditMealModal()" class="flex-1 py-2 bg-slate-100 text-slate-600 text-xs font-semibold rounded-xl">ยกเลิก</button>
+                    <button onclick="saveEditedMeal()" class="flex-1 py-2 bg-emerald-600 text-white text-xs font-semibold rounded-xl shadow-md">บันทึกการแก้ไข</button>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // Global Application State
+        const STATE_KEY = 'nutritrack_app_state';
+        
+        let appState = {
+            selectedDate: getTodayString(),
+            logMode: 'gram', // 'gram' or 'portion'
+            autoRebalance: true, // Auto shift macro if exceeded
+            profile: {
+                gender: 'male',
+                age: 25,
+                height: 170,
+                weight: 65,
+                bodyFat: null,
+                eee: 300,
+                targetEA: 30,
+                proteinRatio: 1.8,
+                carbPercent: 60,
+                targetCal: 0,
+                targetCarb: 0,
+                targetProtein: 0,
+                targetFat: 0
+            },
+            meals: [],
+            weights: [],
+            foodMemory: []
+        };
+
+        let weightChartInstance = null;
+
+        function escapeHtml(str) {
+            return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            // ป้องกันการใช้นิ้วถ่างซูม (Pinch to zoom)
+            document.addEventListener('touchstart', function (e) {
+                if (e.touches.length > 1) {
+                    e.preventDefault();
+                }
+            }, { passive: false });
+
+            // ป้องกันการกดเบิ้ลเพื่อซูม (Double tap to zoom)
+            let lastTouchEnd = 0;
+            document.addEventListener('touchend', function (e) {
+                const now = Date.now();
+                if (now - lastTouchEnd <= 300) {
+                    e.preventDefault();
+                }
+                lastTouchEnd = now;
+            }, false);
+
+            // ป้องกัน Gesture Zoom บน Safari/iOS
+            document.addEventListener('gesturestart', function (e) {
+                e.preventDefault();
+            });
+
+            // ป้องกันการหมุนลูกกลิ้งเมาส์ร่วมกับกด Ctrl บนคอมพิวเตอร์
+            document.addEventListener('wheel', function (e) {
+                if (e.ctrlKey) {
+                    e.preventDefault();
+                }
+            }, { passive: false });
+
+            loadStateFromStorage();
+            
+            // Set date picker default value
+            const datePicker = document.getElementById('date-picker');
+            if (datePicker) {
+                datePicker.value = appState.selectedDate || getTodayString();
+                updateDateDisplayLabel();
+            }
+
+            // Populate form values from profile state
+            if (document.getElementById('prof-gender')) document.getElementById('prof-gender').value = appState.profile.gender || 'male';
+            if (document.getElementById('prof-age')) document.getElementById('prof-age').value = appState.profile.age || 25;
+            if (document.getElementById('prof-height')) document.getElementById('prof-height').value = appState.profile.height || 170;
+            if (document.getElementById('prof-weight')) document.getElementById('prof-weight').value = appState.profile.weight || 65;
+            if (document.getElementById('prof-bf')) document.getElementById('prof-bf').value = appState.profile.bodyFat !== null && appState.profile.bodyFat !== undefined ? appState.profile.bodyFat : '';
+            if (document.getElementById('prof-eee')) document.getElementById('prof-eee').value = appState.profile.eee;
+            if (document.getElementById('prof-ea')) document.getElementById('prof-ea').value = appState.profile.targetEA;
+            if (document.getElementById('prof-prot-ratio')) document.getElementById('prof-prot-ratio').value = appState.profile.proteinRatio;
+            if (document.getElementById('prof-carb-ratio')) {
+                document.getElementById('prof-carb-ratio').value = appState.profile.carbPercent || 60;
+            }
+            if (document.getElementById('auto-rebalance-toggle')) {
+                document.getElementById('auto-rebalance-toggle').checked = appState.autoRebalance !== false;
+            }
+
+            // Calculate initial targets and render layout
+            calculateFFMAndTargets();
+            setLogMode(appState.logMode || 'gram');
+            renderDashboard();
+            renderWeightLogs();
+            renderHistoryLogs();
+        });
+
+        function getTodayString() {
+            const d = new Date();
+            const year = d.getFullYear();
+            const month = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        }
+
+        function switchTab(tabId) {
+            const tabs = ['tab-dashboard', 'tab-calc', 'tab-weight', 'tab-history'];
+            tabs.forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.classList.add('hidden');
+                
+                const navBtn = document.getElementById('nav-' + id);
+                if (navBtn) {
+                    navBtn.classList.remove('text-emerald-600');
+                    navBtn.classList.add('text-slate-400');
+                }
+            });
+
+            const targetEl = document.getElementById(tabId);
+            if (targetEl) targetEl.classList.remove('hidden');
+
+            const targetNav = document.getElementById('nav-' + tabId);
+            if (targetNav) {
+                targetNav.classList.remove('text-slate-400');
+                targetNav.classList.add('text-emerald-600');
+            }
+
+            if (tabId === 'tab-weight') {
+                renderWeightChart();
+            }
+        }
+
+        function updateDateDisplayLabel() {
+            const picker = document.getElementById('date-picker');
+            const display = document.getElementById('current-date-display');
+            if (!picker || !display) return;
+            
+            const selected = picker.value;
+            const today = getTodayString();
+            
+            if (selected === today) {
+                display.innerText = 'วันนี้';
+            } else {
+                const parts = selected.split('-');
+                display.innerText = `${parts[2]}/${parts[1]}/${parts[0]}`;
+            }
+        }
+
+        function changeDate(delta) {
+            const picker = document.getElementById('date-picker');
+            if (!picker.value) picker.value = getTodayString();
+            
+            const current = new Date(picker.value);
+            current.setDate(current.getDate() + delta);
+            
+            const year = current.getFullYear();
+            const month = String(current.getMonth() + 1).padStart(2, '0');
+            const day = String(current.getDate()).padStart(2, '0');
+            const newStr = `${year}-${month}-${day}`;
+            
+            picker.value = newStr;
+            appState.selectedDate = newStr;
+            updateDateDisplayLabel();
+            renderDashboard();
+        }
+
+        function onDateSelected(val) {
+            appState.selectedDate = val || getTodayString();
+            updateDateDisplayLabel();
+            renderDashboard();
+        }
+
+        function calculateFFMAndTargets() {
+            const gender = document.getElementById('prof-gender').value;
+            const age = parseFloat(document.getElementById('prof-age').value) || 25;
+            const height = parseFloat(document.getElementById('prof-height').value) || 170;
+            const weight = parseFloat(document.getElementById('prof-weight').value) || 65;
+            let bfInput = document.getElementById('prof-bf').value;
+            
+            let bodyFat = bfInput !== '' ? parseFloat(bfInput) : null;
+            
+            if (bodyFat === null || isNaN(bodyFat)) {
+                const bmi = weight / ((height / 100) * (height / 100));
+                if (gender === 'male') {
+                    bodyFat = Math.max(8, Math.min(35, (1.20 * bmi) + (0.23 * age) - 16.2));
+                } else {
+                    bodyFat = Math.max(14, Math.min(45, (1.20 * bmi) + (0.23 * age) - 5.4));
+                }
+            }
+
+            const ffm = weight * (1 - (bodyFat / 100));
+            document.getElementById('display-ffm').innerText = ffm.toFixed(2);
+
+            const eee = parseFloat(document.getElementById('prof-eee').value) || 0;
+            const targetEA = parseFloat(document.getElementById('prof-ea').value) || 30;
+            const proteinRatio = parseFloat(document.getElementById('prof-prot-ratio').value) || 1.8;
+            const carbPercent = parseFloat(document.getElementById('prof-carb-ratio')?.value) || 60;
+            const fatPercent = 100 - carbPercent;
+
+            document.getElementById('display-ea-val').innerText = targetEA + ' kcal/kg FFM';
+            document.getElementById('display-prot-val').innerText = proteinRatio.toFixed(1) + ' g / kg';
+            if(document.getElementById('display-carb-fat-ratio')) {
+                document.getElementById('display-carb-fat-ratio').innerText = `คาร์บ ${carbPercent}% : ไขมัน ${fatPercent}%`;
+            }
+
+            const targetEI = (targetEA * ffm) + eee;
+            const targetProteinGrams = weight * proteinRatio;
+            const proteinCal = targetProteinGrams * 4;
+
+            const remainingCal = Math.max(0, targetEI - proteinCal);
+            const targetCarbGrams = (remainingCal * (carbPercent / 100)) / 4;
+            const targetFatGrams = (remainingCal * (fatPercent / 100)) / 9;
+
+            appState.profile = {
+                gender, age, height, weight, bodyFat, eee, targetEA, proteinRatio, carbPercent,
+                targetCal: Math.round(targetEI),
+                targetCarb: Math.round(targetCarbGrams),
+                targetProtein: Math.round(targetProteinGrams),
+                targetFat: Math.round(targetFatGrams)
+            };
+
+            document.getElementById('res-target-cal').innerText = appState.profile.targetCal + ' kcal';
+            document.getElementById('res-target-carb').innerText = appState.profile.targetCarb + 'g';
+            document.getElementById('res-target-carb-p').innerText = (appState.profile.targetCarb / 30).toFixed(1) + ' ส่วน';
+            
+            document.getElementById('res-target-prot').innerText = appState.profile.targetProtein + 'g';
+            document.getElementById('res-target-prot-p').innerText = (appState.profile.targetProtein / 25).toFixed(1) + ' ส่วน';
+            
+            document.getElementById('res-target-fat').innerText = appState.profile.targetFat + 'g';
+            document.getElementById('res-target-fat-p').innerText = (appState.profile.targetFat / 15).toFixed(1) + ' ส่วน';
+
+            renderDashboard();
+        }
+
+        function toggleAutoRebalance(checked) {
+            appState.autoRebalance = checked;
+            saveStateToStorage();
+            renderDashboard();
+            showToast(checked ? 'เปิดระบบโยกสารอาหารอัตโนมัติ' : 'ปิดระบบโยกสารอาหารอัตโนมัติ');
+        }
+
+        function renderDashboard() {
+            const todayMeals = appState.meals.filter(m => m.date === appState.selectedDate);
+
+            let consumedCal = 0, consumedCarb = 0, consumedProtein = 0, consumedFat = 0;
+            todayMeals.forEach(m => {
+                consumedCal += m.cal;
+                consumedCarb += m.carb;
+                consumedProtein += m.protein;
+                consumedFat += m.fat;
+            });
+
+            let autoCarbOffset = 0;
+            let autoFatOffset = 0;
+
+            const baseTargetCarb = appState.profile.targetCarb;
+            const baseTargetFat = appState.profile.targetFat;
+
+            // Auto Rebalance logic
+            const autoBanner = document.getElementById('auto-rebalance-banner');
+            const autoText = document.getElementById('auto-rebalance-text');
+
+            if (appState.autoRebalance) {
+                if (consumedCarb > baseTargetCarb) {
+                    const excessCarbGrams = consumedCarb - baseTargetCarb;
+                    const excessCarbCal = excessCarbGrams * 4;
+                    autoFatOffset = -(excessCarbCal / 9); // reduce fat target
+                    if (autoBanner && autoText) {
+                        autoText.innerText = `⚡ คาร์บเกิน ${excessCarbGrams.toFixed(1)}g ➔ หักไขมันอัตโนมัติ ${Math.abs(autoFatOffset).toFixed(1)}g (${Math.round(excessCarbCal)} kcal)`;
+                        autoBanner.classList.remove('hidden');
+                    }
+                } else if (consumedFat > baseTargetFat) {
+                    const excessFatGrams = consumedFat - baseTargetFat;
+                    const excessFatCal = excessFatGrams * 9;
+                    autoCarbOffset = -(excessFatCal / 4); // reduce carb target
+                    if (autoBanner && autoText) {
+                        autoText.innerText = `⚡ ไขมันเกิน ${excessFatGrams.toFixed(1)}g ➔ หักคาร์บอัตโนมัติ ${Math.abs(autoCarbOffset).toFixed(1)}g (${Math.round(excessFatCal)} kcal)`;
+                        autoBanner.classList.remove('hidden');
+                    }
+                } else {
+                    if (autoBanner) autoBanner.classList.add('hidden');
+                }
+            } else {
+                if (autoBanner) autoBanner.classList.add('hidden');
+            }
+
+            const adjustedTargetCarb = Math.max(0, baseTargetCarb + autoCarbOffset);
+            const adjustedTargetFat = Math.max(0, baseTargetFat + autoFatOffset);
+            const targetProtein = appState.profile.targetProtein;
+            const targetCal = appState.profile.targetCal;
+
+            // Calorie Banner Updates
+            document.getElementById('dash-cal-consumed').innerText = Math.round(consumedCal);
+            document.getElementById('dash-cal-target').innerText = targetCal;
+            const remainingCal = targetCal - Math.round(consumedCal);
+            document.getElementById('dash-cal-remaining').innerText = (remainingCal >= 0 ? remainingCal : 0) + ' kcal';
+            
+            const calPercent = targetCal > 0 ? Math.min(100, Math.round((consumedCal / targetCal) * 100)) : 0;
+            document.getElementById('dash-cal-bar').style.width = calPercent + '%';
+            document.getElementById('dash-cal-percent').innerText = calPercent;
+            document.getElementById('dash-ea-value').innerText = appState.profile.targetEA;
+
+            // Carb Updates
+            document.getElementById('dash-carb-val').innerText = `${consumedCarb.toFixed(0)} / ${adjustedTargetCarb.toFixed(0)}g`;
+            document.getElementById('dash-carb-portion').innerText = `(${ (consumedCarb / 30).toFixed(1) } / ${ (adjustedTargetCarb / 30).toFixed(1) } ส่วน)`;
+            const carbPercent = adjustedTargetCarb > 0 ? Math.min(100, (consumedCarb / adjustedTargetCarb) * 100) : 0;
+            document.getElementById('dash-carb-bar').style.width = carbPercent + '%';
+            
+            const remCarbGrams = Math.max(0, (adjustedTargetCarb - consumedCarb));
+            const remCarbPortions = (remCarbGrams / 30).toFixed(1);
+            document.getElementById('dash-carb-rem').innerText = `${remCarbGrams.toFixed(0)}g (${remCarbPortions} ส่วน)`;
+
+            // Protein Updates
+            document.getElementById('dash-protein-val').innerText = `${consumedProtein.toFixed(0)} / ${targetProtein.toFixed(0)}g`;
+            document.getElementById('dash-protein-portion').innerText = `(${ (consumedProtein / 25).toFixed(1) } / ${ (targetProtein / 25).toFixed(1) } ส่วน)`;
+            const proteinPercent = targetProtein > 0 ? Math.min(100, (consumedProtein / targetProtein) * 100) : 0;
+            document.getElementById('dash-protein-bar').style.width = proteinPercent + '%';
+
+            const remProtGrams = Math.max(0, (targetProtein - consumedProtein));
+            const remProtPortions = (remProtGrams / 25).toFixed(1);
+            document.getElementById('dash-protein-rem').innerText = `${remProtGrams.toFixed(0)}g (${remProtPortions} ส่วน)`;
+
+            // Fat Updates
+            document.getElementById('dash-fat-val').innerText = `${consumedFat.toFixed(0)} / ${adjustedTargetFat.toFixed(0)}g`;
+            document.getElementById('dash-fat-portion').innerText = `(${ (consumedFat / 15).toFixed(1) } / ${ (adjustedTargetFat / 15).toFixed(1) } ส่วน)`;
+            const fatPercent = adjustedTargetFat > 0 ? Math.min(100, (consumedFat / adjustedTargetFat) * 100) : 0;
+            document.getElementById('dash-fat-bar').style.width = fatPercent + '%';
+
+            const remFatGrams = Math.max(0, (adjustedTargetFat - consumedFat));
+            const remFatPortions = (remFatGrams / 15).toFixed(1);
+            document.getElementById('dash-fat-rem').innerText = `${remFatGrams.toFixed(0)}g (${remFatPortions} ส่วน)`;
+
+            // Render Meal List for Today
+            const mealListEl = document.getElementById('dash-meals-list');
+            if (todayMeals.length === 0) {
+                mealListEl.innerHTML = `
+                    <div class="text-center py-5 text-slate-400 text-xs">
+                        <i class="fa-solid fa-utensils text-xl mb-1 text-slate-200"></i>
+                        <p>ยังไม่มีรายการอาหารสำหรับวันนี้</p>
+                    </div>
+                `;
+            } else {
+                mealListEl.innerHTML = todayMeals.map(m => `
+                    <div class="flex items-center justify-between p-2.5 bg-slate-50 border border-slate-100 rounded-xl hover:bg-slate-100/80 transition">
+                        <div>
+                            <div class="font-bold text-slate-800 text-xs">${m.name}</div>
+                            <div class="text-[10px] text-slate-400 mt-0.5 space-x-2">
+                                <span class="text-blue-600 font-medium">C:${m.carb}g</span>
+                                <span class="text-red-600 font-medium">P:${m.protein}g</span>
+                                <span class="text-amber-600 font-medium">F:${m.fat}g</span>
+                            </div>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <span class="text-xs font-bold text-slate-700">${m.cal} kcal</span>
+                            <button type="button" onclick="openEditMealModal('${m.id}')" class="text-slate-400 hover:text-blue-600 text-xs p-1">
+                                <i class="fa-solid fa-pen"></i>
+                            </button>
+                            <button type="button" onclick="deleteMeal('${m.id}')" class="text-slate-400 hover:text-red-600 text-xs p-1">
+                                <i class="fa-solid fa-trash-can"></i>
+                            </button>
+                        </div>
+                    </div>
+                `).join('');
+            }
+        }
+
+        function setLogMode(mode) {
+            appState.logMode = mode;
+            const btnGram = document.getElementById('mode-btn-gram');
+            const btnPortion = document.getElementById('mode-btn-portion');
+            const labelCarb = document.getElementById('label-carb');
+            const labelProtein = document.getElementById('label-protein');
+            const labelFat = document.getElementById('label-fat');
+            const banner = document.getElementById('portion-info-banner');
+
+            if (mode === 'gram') {
+                btnGram.className = "px-2.5 py-1 rounded-md transition bg-white text-emerald-700 shadow-sm font-semibold";
+                btnPortion.className = "px-2.5 py-1 rounded-md transition text-slate-500 hover:text-slate-800 font-semibold";
+                labelCarb.innerText = "คาร์บ (กรัม)";
+                labelProtein.innerText = "โปรตีน (กรัม)";
+                labelFat.innerText = "ไขมัน (กรัม)";
+                if(banner) banner.classList.add('hidden');
+            } else {
+                btnPortion.className = "px-2.5 py-1 rounded-md transition bg-white text-emerald-700 shadow-sm font-semibold";
+                btnGram.className = "px-2.5 py-1 rounded-md transition text-slate-500 hover:text-slate-800 font-semibold";
+                labelCarb.innerText = "คาร์บ (ส่วน)";
+                labelProtein.innerText = "โปรตีน (ส่วน)";
+                labelFat.innerText = "ไขมัน (ส่วน)";
+                if(banner) banner.classList.remove('hidden');
+            }
+            syncCalculations();
+        }
+
+        function syncCalculations() {
+            const carbInput = parseFloat(document.getElementById('input-carb').value) || 0;
+            const proteinInput = parseFloat(document.getElementById('input-protein').value) || 0;
+            const fatInput = parseFloat(document.getElementById('input-fat').value) || 0;
+
+            let carbGrams = 0, proteinGrams = 0, fatGrams = 0;
+
+            if (appState.logMode === 'gram') {
+                carbGrams = carbInput;
+                proteinGrams = proteinInput;
+                fatGrams = fatInput;
+
+                document.getElementById('converted-carb').innerText = `= ${(carbGrams / 30).toFixed(1)} ส่วน`;
+                document.getElementById('converted-protein').innerText = `= ${(proteinGrams / 25).toFixed(1)} ส่วน`;
+                document.getElementById('converted-fat').innerText = `= ${(fatGrams / 15).toFixed(1)} ส่วน`;
+            } else {
+                carbGrams = carbInput * 30;
+                proteinGrams = proteinInput * 25;
+                fatGrams = fatInput * 15;
+
+                document.getElementById('converted-carb').innerText = `= ${carbGrams.toFixed(0)} กรัม`;
+                document.getElementById('converted-protein').innerText = `= ${proteinGrams.toFixed(0)} กรัม`;
+                document.getElementById('converted-fat').innerText = `= ${fatGrams.toFixed(0)} กรัม`;
+            }
+
+            const totalCal = (carbGrams * 4) + (proteinGrams * 4) + (fatGrams * 9);
+            document.getElementById('form-total-cal').innerText = Math.round(totalCal);
+        }
+
+        function handleFoodSubmit(e) {
+            e.preventDefault();
+            const nameInput = document.getElementById('food-name');
+            const name = nameInput.value.trim() || 'มื้ออาหารทั่วไป';
+
+            const carbVal = parseFloat(document.getElementById('input-carb').value) || 0;
+            const proteinVal = parseFloat(document.getElementById('input-protein').value) || 0;
+            const fatVal = parseFloat(document.getElementById('input-fat').value) || 0;
+
+            if (carbVal === 0 && proteinVal === 0 && fatVal === 0) {
+                showToast('กรุณากรอกสารอาหารอย่างน้อย 1 ช่อง');
+                return;
+            }
+
+            let carbGrams = carbVal;
+            let proteinGrams = proteinVal;
+            let fatGrams = fatVal;
+
+            if (appState.logMode === 'portion') {
+                carbGrams = carbVal * 30;
+                proteinGrams = proteinVal * 25;
+                fatGrams = fatVal * 15;
+            }
+
+            const cal = Math.round((carbGrams * 4) + (proteinGrams * 4) + (fatGrams * 9));
+
+            const newMeal = {
+                id: Date.now().toString(),
+                date: appState.selectedDate,
+                name: name,
+                carb: Math.round(carbGrams * 10) / 10,
+                protein: Math.round(proteinGrams * 10) / 10,
+                fat: Math.round(fatGrams * 10) / 10,
+                cal: cal
+            };
+
+            appState.meals.push(newMeal);
+
+            if (nameInput.value.trim() !== '') {
+                const existingMemoryIdx = appState.foodMemory.findIndex(f => f.name.toLowerCase() === name.toLowerCase());
+                const memoryItem = { name: name, carb: carbGrams, protein: proteinGrams, fat: fatGrams };
+                if (existingMemoryIdx >= 0) {
+                    appState.foodMemory[existingMemoryIdx] = memoryItem;
+                } else {
+                    appState.foodMemory.push(memoryItem);
+                }
+            }
+
+            saveStateToStorage();
+
+            nameInput.value = '';
+            document.getElementById('input-carb').value = '';
+            document.getElementById('input-protein').value = '';
+            document.getElementById('input-fat').value = '';
+            document.getElementById('autocomplete-list').classList.add('hidden');
+            document.getElementById('autocomplete-ghost').innerText = '';
+
+            syncCalculations();
+            renderDashboard();
+            renderHistoryLogs();
+            showToast('บันทึกอาหารเรียบร้อย');
+        }
+
+        function handleFoodNameInput(val) {
+            const listEl = document.getElementById('autocomplete-list');
+            const ghostEl = document.getElementById('autocomplete-ghost');
+            if (!val || appState.foodMemory.length === 0) {
+                listEl.classList.add('hidden');
+                ghostEl.innerHTML = '';
+                return;
+            }
+
+            const matches = appState.foodMemory.filter(item => item.name.toLowerCase().includes(val.toLowerCase()));
+            
+            if (matches.length > 0) {
+                const firstMatch = matches[0];
+                if (firstMatch.name.toLowerCase().startsWith(val.toLowerCase())) {
+                    const typedPart = val;
+                    const remainingPart = firstMatch.name.slice(val.length);
+                    
+                    ghostEl.innerHTML = `<span class="opacity-0">${escapeHtml(typedPart)}</span><span class="text-slate-400 font-normal opacity-60">${escapeHtml(remainingPart)}</span><span class="ml-2 text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded-md font-semibold pointer-events-auto cursor-pointer" onclick="selectAutocomplete('${escapeHtml(firstMatch.name)}')">แตะเลือก ↵</span>`;
+                } else {
+                    ghostEl.innerHTML = '';
+                }
+
+                listEl.innerHTML = matches.map(item => `
+                    <div onclick="selectAutocomplete('${item.name.replace(/'/g, "\\'")}')" class="px-3 py-2 text-xs hover:bg-slate-100 cursor-pointer flex justify-between items-center transition">
+                        <span class="font-semibold text-slate-800">${escapeHtml(item.name)}</span>
+                        <span class="text-[10px] text-slate-400">C:${item.carb}g P:${item.protein}g F:${item.fat}g</span>
+                    </div>
+                `).join('');
+                listEl.classList.remove('hidden');
+            } else {
+                listEl.classList.add('hidden');
+                ghostEl.innerHTML = '';
+            }
+        }
+
+        function selectAutocomplete(name) {
+            const item = appState.foodMemory.find(f => f.name === name);
+            if (!item) return;
+
+            document.getElementById('food-name').value = item.name;
+            document.getElementById('autocomplete-ghost').innerHTML = '';
+            document.getElementById('autocomplete-list').classList.add('hidden');
+
+            if (appState.logMode === 'gram') {
+                document.getElementById('input-carb').value = item.carb;
+                document.getElementById('input-protein').value = item.protein;
+                document.getElementById('input-fat').value = item.fat;
+            } else {
+                document.getElementById('input-carb').value = (item.carb / 30).toFixed(1);
+                document.getElementById('input-protein').value = (item.protein / 25).toFixed(1);
+                document.getElementById('input-fat').value = (item.fat / 15).toFixed(1);
+            }
+            syncCalculations();
+        }
+
+        function handleFoodNameKeyDown(e) {
+            if (e.key === 'Tab' || e.key === 'ArrowRight' || e.key === 'Enter') {
+                const listEl = document.getElementById('autocomplete-list');
+                const val = document.getElementById('food-name').value.trim();
+                if (val && appState.foodMemory.length > 0) {
+                    const match = appState.foodMemory.find(item => item.name.toLowerCase().startsWith(val.toLowerCase()));
+                    if (match && e.key !== 'Enter') {
+                        e.preventDefault();
+                        selectAutocomplete(match.name);
+                    }
+                }
+            }
+        }
+
+        function handleWeightSubmit(e) {
+            e.preventDefault();
+            const val = parseFloat(document.getElementById('weight-input-val').value);
+            if (!val) return;
+
+            const existingIndex = appState.weights.findIndex(w => w.date === appState.selectedDate);
+            if (existingIndex >= 0) {
+                appState.weights[existingIndex].weight = val;
+            } else {
+                appState.weights.push({ id: Date.now().toString(), date: appState.selectedDate, weight: val });
+            }
+
+            appState.weights.sort((a, b) => new Date(a.date) - new Date(b.date));
+
+            appState.profile.weight = val;
+            document.getElementById('prof-weight').value = val;
+            calculateFFMAndTargets();
+
+            saveStateToStorage();
+            document.getElementById('weight-input-val').value = '';
+            renderWeightLogs();
+            renderWeightChart();
+            showToast('บันทึกน้ำหนักแล้ว');
+        }
+
+        function renderWeightLogs() {
+            const listEl = document.getElementById('weight-history-list');
+            if (!listEl) return;
+            if (appState.weights.length === 0) {
+                listEl.innerHTML = '<div class="text-center text-xs text-slate-400 py-4">ยังไม่มีประวัติน้ำหนัก</div>';
+                return;
+            }
+
+            const sorted = [...appState.weights].sort((a, b) => new Date(b.date) - new Date(a.date));
+
+            listEl.innerHTML = sorted.map((w) => {
+                const chronologicalIndex = appState.weights.findIndex(x => x.date === w.date);
+                let diffText = '';
+                let diffClass = 'text-slate-400';
+
+                if (chronologicalIndex > 0) {
+                    const prevWeight = appState.weights[chronologicalIndex - 1].weight;
+                    const diff = w.weight - prevWeight;
+                    if (diff > 0) {
+                        diffText = `+${diff.toFixed(1)} kg`;
+                        diffClass = 'text-red-500 bg-red-50 px-2 py-0.5 rounded-full font-semibold';
+                    } else if (diff < 0) {
+                        diffText = `${diff.toFixed(1)} kg`;
+                        diffClass = 'text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full font-semibold';
+                    } else {
+                        diffText = `0.0 kg`;
+                    }
+                }
+
+                return `
+                    <div class="flex items-center justify-between p-2.5 bg-slate-50 border border-slate-100 rounded-xl text-xs">
+                        <span class="font-medium text-slate-700">${w.date}</span>
+                        <div class="flex items-center space-x-3">
+                            <span class="font-bold text-slate-800 text-sm">${w.weight.toFixed(1)} kg</span>
+                            <span class="${diffClass} text-[10px]">${diffText}</span>
+                            <button type="button" onclick="deleteWeight('${w.id}')" class="text-slate-300 hover:text-red-500">
+                                <i class="fa-solid fa-xmark"></i>
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function deleteWeight(id) {
+            appState.weights = appState.weights.filter(w => w.id !== id);
+            saveStateToStorage();
+            renderWeightLogs();
+            renderWeightChart();
+            showToast('ลบประวัติน้ำหนักแล้ว');
+        }
+
+        function renderWeightChart() {
+            const canvas = document.getElementById('weightChart');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            
+            if (weightChartInstance) {
+                weightChartInstance.destroy();
+            }
+
+            const sorted = [...appState.weights].sort((a, b) => new Date(a.date) - new Date(b.date));
+            const labels = sorted.map(w => w.date);
+            const dataVals = sorted.map(w => w.weight);
+
+            weightChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'น้ำหนัก (กก.)',
+                        data: dataVals,
+                        borderColor: '#16a34a',
+                        backgroundColor: 'rgba(22, 163, 74, 0.1)',
+                        fill: true,
+                        tension: 0.3,
+                        pointRadius: 4,
+                        pointBackgroundColor: '#16a34a'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: false,
+                            grid: { color: '#f1f5f9' }
+                        },
+                        x: {
+                            grid: { display: false }
+                        }
+                    }
+                }
+            });
+        }
+
+        function renderHistoryLogs() {
+            const container = document.getElementById('history-logs-container');
+            if (!container) return;
+            
+            if (appState.meals.length === 0) {
+                container.innerHTML = '<div class="text-center text-xs text-slate-400 py-6">ยังไม่มีประวัติการบันทึกอาหาร</div>';
+                return;
+            }
+
+            const grouped = {};
+            appState.meals.forEach(m => {
+                if (!grouped[m.date]) grouped[m.date] = [];
+                grouped[m.date].push(m);
+            });
+
+            const sortedDates = Object.keys(grouped).sort((a, b) => new Date(b) - new Date(a));
+
+            container.innerHTML = sortedDates.map(date => {
+                const dayMeals = grouped[date];
+                const dayTotalCal = dayMeals.reduce((sum, item) => sum + item.cal, 0);
+
+                return `
+                    <div class="border border-slate-200 rounded-xl overflow-hidden bg-slate-50/50">
+                        <div class="bg-slate-100 px-3 py-2 flex justify-between items-center text-xs font-bold text-slate-700">
+                            <span><i class="fa-regular fa-calendar-days text-emerald-600 mr-1.5"></i>${date}</span>
+                            <span class="text-emerald-700">${dayTotalCal} kcal</span>
+                        </div>
+                        <div class="p-2 space-y-1.5 bg-white">
+                            ${dayMeals.map(m => `
+                                <div class="flex items-center justify-between text-xs p-1.5 rounded-lg hover:bg-slate-50 border border-slate-100">
+                                    <div>
+                                        <div class="font-medium text-slate-800">${m.name}</div>
+                                        <div class="text-[10px] text-slate-400 space-x-1.5">
+                                            <span class="text-blue-600">C:${m.carb}g</span>
+                                            <span class="text-red-600">P:${m.protein}g</span>
+                                            <span class="text-amber-600">F:${m.fat}g</span>
+                                        </div>
+                                    </div>
+                                    <div class="flex items-center space-x-2">
+                                        <span class="font-bold text-slate-700">${m.cal} kcal</span>
+                                        <button type="button" onclick="openEditMealModal('${m.id}')" class="text-slate-400 hover:text-blue-600 p-1">
+                                            <i class="fa-solid fa-pen"></i>
+                                        </button>
+                                        <button type="button" onclick="deleteMeal('${m.id}')" class="text-slate-400 hover:text-red-600 p-1">
+                                            <i class="fa-solid fa-trash-can"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function deleteMeal(id) {
+            appState.meals = appState.meals.filter(m => m.id !== id);
+            saveStateToStorage();
+            renderDashboard();
+            renderHistoryLogs();
+            showToast('ลบรายการแล้ว');
+        }
+
+        function openEditMealModal(id) {
+            const meal = appState.meals.find(m => m.id === id);
+            if (!meal) return;
+
+            document.getElementById('edit-meal-id').value = meal.id;
+            document.getElementById('edit-meal-name').value = meal.name;
+            document.getElementById('edit-meal-carb').value = meal.carb;
+            document.getElementById('edit-meal-protein').value = meal.protein;
+            document.getElementById('edit-meal-fat').value = meal.fat;
+
+            document.getElementById('edit-meal-modal').classList.remove('hidden');
+        }
+
+        function closeEditMealModal() {
+            document.getElementById('edit-meal-modal').classList.add('hidden');
+        }
+
+        function saveEditedMeal() {
+            const id = document.getElementById('edit-meal-id').value;
+            const name = document.getElementById('edit-meal-name').value.trim() || 'มื้ออาหารทั่วไป';
+            const carb = parseFloat(document.getElementById('edit-meal-carb').value) || 0;
+            const protein = parseFloat(document.getElementById('edit-meal-protein').value) || 0;
+            const fat = parseFloat(document.getElementById('edit-meal-fat').value) || 0;
+
+            const mealIndex = appState.meals.findIndex(m => m.id === id);
+            if (mealIndex >= 0) {
+                const cal = (carb * 4) + (protein * 4) + (fat * 9);
+                appState.meals[mealIndex].name = name;
+                appState.meals[mealIndex].carb = carb;
+                appState.meals[mealIndex].protein = protein;
+                appState.meals[mealIndex].fat = fat;
+                appState.meals[mealIndex].cal = Math.round(cal);
+            }
+
+            saveStateToStorage();
+            closeEditMealModal();
+            renderDashboard();
+            renderHistoryLogs();
+            showToast('บันทึกการแก้ไขแล้ว');
+        }
+
+        function showToast(msg) {
+            const toast = document.getElementById('toast-msg');
+            const toastText = document.getElementById('toast-text');
+            if (!toast || !toastText) return;
+
+            toastText.innerText = msg;
+            toast.classList.remove('opacity-0', 'pointer-events-none');
+            toast.classList.add('opacity-100');
+
+            setTimeout(() => {
+                toast.classList.remove('opacity-100');
+                toast.classList.add('opacity-0', 'pointer-events-none');
+            }, 2500);
+        }
+
+        function saveProfileSettings(e) {
+            if (e) e.preventDefault();
+            calculateFFMAndTargets();
+            saveStateToStorage();
+            showToast('บันทึกการตั้งค่าเป้าหมายเรียบร้อย');
+        }
+
+        function exportToWord() {
+            const today = appState.selectedDate || getTodayString();
+            const ffm = document.getElementById('display-ffm')?.innerText || '-';
+            
+            // Group meals
+            const grouped = {};
+            appState.meals.forEach(m => {
+                if (!grouped[m.date]) grouped[m.date] = [];
+                grouped[m.date].push(m);
+            });
+            const sortedDates = Object.keys(grouped).sort((a, b) => new Date(b) - new Date(a));
+
+            let mealsTableHtml = '';
+            if (sortedDates.length === 0) {
+                mealsTableHtml = '<tr><td colspan="5" style="text-align:center; color:#94a3b8; padding:10px;">ไม่มีรายการอาหาร</td></tr>';
+            } else {
+                sortedDates.forEach(d => {
+                    const list = grouped[d];
+                    const dayCal = list.reduce((sum, item) => sum + item.cal, 0);
+                    mealsTableHtml += `<tr style="background-color:#e2e8f0; font-weight:bold;"><td colspan="5" style="padding:6px 10px;">📅 วันที่ ${d} (รวม ${dayCal} kcal)</td></tr>`;
+                    list.forEach(m => {
+                        mealsTableHtml += `
+                            <tr>
+                                <td style="padding-left:15px; padding:6px 10px;">${escapeHtml(m.name)}</td>
+                                <td style="padding:6px 10px;">${m.carb} g (${(m.carb/30).toFixed(1)} ส่วน)</td>
+                                <td style="padding:6px 10px;">${m.protein} g (${(m.protein/25).toFixed(1)} ส่วน)</td>
+                                <td style="padding:6px 10px;">${m.fat} g (${(m.fat/15).toFixed(1)} ส่วน)</td>
+                                <td style="padding:6px 10px;"><b>${m.cal} kcal</b></td>
+                            </tr>
+                        `;
+                    });
+                });
+            }
+
+            // Weights
+            const sortedWeights = [...appState.weights].sort((a, b) => new Date(b.date) - new Date(a.date));
+            let weightsTableHtml = sortedWeights.length === 0 ? '<tr><td colspan="2" style="text-align:center; color:#94a3b8; padding:10px;">ไม่มีประวัติน้ำหนัก</td></tr>' : 
+                sortedWeights.map(w => `<tr><td style="padding:6px 10px;">${w.date}</td><td style="padding:6px 10px;"><b>${w.weight.toFixed(1)} kg</b></td></tr>`).join('');
+
+            // Microsoft Office Word Compatible Standard HTML Container
+            const wordDocHtml = `<html xmlns:o="urn:schemas-microsoft-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+<head>
+<meta charset="utf-8">
+<title>NutriTrack EA Summary Report</title>
+<!--[if gte mso 9]>
+<xml>
+ <w:WordDocument>
+  <w:View>Print</w:View>
+  <w:Zoom>100</w:Zoom>
+  <w:DoNotOptimizeForBrowser/>
+ </w:WordDocument>
+</xml>
+<![endif]-->
+<style>
+    body { font-family: 'Tahoma', 'Segoe UI', Arial, sans-serif; padding: 20px; color: #1e293b; line-height: 1.5; }
+    h1 { color: #16a34a; font-size: 20pt; margin-bottom: 5px; font-weight: bold; }
+    h2 { color: #0f172a; font-size: 13pt; border-bottom: 2px solid #16a34a; padding-bottom: 4px; margin-top: 22px; font-weight: bold; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 10pt; }
+    th, td { border: 1px solid #cbd5e1; padding: 8px 10px; text-align: left; }
+    th { background-color: #f1f5f9; color: #334155; font-weight: bold; }
+    .highlight { font-weight: bold; color: #16a34a; }
+</style>
+</head>
+<body>
+    <h1>NutriTrack EA - รายงานสรุปโภชนาการและการออกกำลังกาย</h1>
+    <p style="font-size:10pt; color:#64748b;"><b>วันที่ออกรายงาน:</b> ${today}</p>
+    
+    <h2>1. ข้อมูลส่วนตัว & เป้าหมายพลังงาน (Reverse EA)</h2>
+    <table>
+        <tr>
+            <th width="20%">เพศ</th><td width="30%">${appState.profile.gender === 'male' ? 'ชาย' : 'หญิง'}</td>
+            <th width="20%">อายุ</th><td width="30%">${appState.profile.age} ปี</td>
+        </tr>
+        <tr>
+            <th>ส่วนสูง</th><td>${appState.profile.height} ซม.</td>
+            <th>น้ำหนักปัจจุบัน</th><td>${appState.profile.weight} กิโลกรัม</td>
+        </tr>
+        <tr>
+            <th>% Body Fat</th><td>${appState.profile.bodyFat !== null && appState.profile.bodyFat !== undefined ? appState.profile.bodyFat + '%' : 'ค่าเฉลี่ย'}</td>
+            <th>Fat-Free Mass (FFM)</th><td>${ffm} kg</td>
+        </tr>
+        <tr>
+            <th>เป้าหมาย EA</th><td>${appState.profile.targetEA} kcal/kg FFM</td>
+            <th>EEE (แคลออกกำลังกายเฉลี่ย)</th><td>${appState.profile.eee} kcal/วัน</td>
+        </tr>
+        <tr style="background-color:#f0fdf4;">
+            <th>เป้าหมายพลังงานรวม (EI)</th>
+            <td colspan="3"><b class="highlight" style="font-size:12pt;">${appState.profile.targetCal} kcal / วัน</b></td>
+        </tr>
+        <tr>
+            <th>เป้าหมายคาร์โบไฮเดรต</th><td colspan="3">${appState.profile.targetCarb}g (${(appState.profile.targetCarb/30).toFixed(1)} ส่วน)</td>
+        </tr>
+        <tr>
+            <th>เป้าหมายโปรตีน</th><td colspan="3">${appState.profile.targetProtein}g (${(appState.profile.targetProtein/25).toFixed(1)} ส่วน)</td>
+        </tr>
+        <tr>
+            <th>เป้าหมายไขมัน</th><td colspan="3">${appState.profile.targetFat}g (${(appState.profile.targetFat/15).toFixed(1)} ส่วน)</td>
+        </tr>
+    </table>
+
+    <h2>2. ประวัติการบันทึกมื้ออาหาร</h2>
+    <table>
+        <thead>
+            <tr>
+                <th width="35%">ชื่อเมนูอาหาร</th>
+                <th width="18%">คาร์โบไฮเดรต</th>
+                <th width="18%">โปรตีน</th>
+                <th width="18%">ไขมัน</th>
+                <th width="11%">พลังงาน</th>
+            </tr>
+        </thead>
+        <tbody>
+            ${mealsTableHtml}
+        </tbody>
+    </table>
+
+    <h2>3. ประวัติน้ำหนักตัว</h2>
+    <table style="width:50%;">
+        <thead>
+            <tr>
+                <th>วันที่</th>
+                <th>น้ำหนักตัว (kg)</th>
+            </tr>
+        </thead>
+        <tbody>
+            ${weightsTableHtml}
+        </tbody>
+    </table>
+</body>
+</html>`;
+
+            // Download using Blob with UTF-8 BOM
+            const blob = new Blob(['\ufeff', wordDocHtml], { type: 'application/msword;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `NutriTrack_Report_${today}.doc`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            showToast('ส่งออกไฟล์ Word เรียบร้อย');
+        }
+
+        function exportBackupJSON() {
+            const jsonStr = JSON.stringify(appState, null, 2);
+            const blob = new Blob([jsonStr], { type: 'application/json;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `NutriTrack_Backup_${getTodayString()}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            
+            showToast('ดาวน์โหลดไฟล์สำรองข้อมูลเรียบร้อย');
+        }
+
+        function triggerImportJSON() {
+            const fileInput = document.getElementById('import-file-input');
+            if (fileInput) fileInput.click();
+        }
+
+        function handleFileImport(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const imported = JSON.parse(e.target.result);
+                    if (imported && (imported.profile || imported.meals || imported.weights)) {
+                        appState = { ...appState, ...imported };
+                        saveStateToStorage();
+
+                        // Populate form inputs
+                        if (document.getElementById('prof-gender')) document.getElementById('prof-gender').value = appState.profile.gender || 'male';
+                        if (document.getElementById('prof-age')) document.getElementById('prof-age').value = appState.profile.age || 25;
+                        if (document.getElementById('prof-height')) document.getElementById('prof-height').value = appState.profile.height || 170;
+                        if (document.getElementById('prof-weight')) document.getElementById('prof-weight').value = appState.profile.weight || 65;
+                        if (document.getElementById('prof-bf')) document.getElementById('prof-bf').value = appState.profile.bodyFat !== null && appState.profile.bodyFat !== undefined ? appState.profile.bodyFat : '';
+                        if (document.getElementById('prof-eee')) document.getElementById('prof-eee').value = appState.profile.eee;
+                        if (document.getElementById('prof-ea')) document.getElementById('prof-ea').value = appState.profile.targetEA;
+                        if (document.getElementById('prof-prot-ratio')) document.getElementById('prof-prot-ratio').value = appState.profile.proteinRatio;
+                        if (document.getElementById('prof-carb-ratio')) document.getElementById('prof-carb-ratio').value = appState.profile.carbPercent || 60;
+
+                        calculateFFMAndTargets();
+                        renderDashboard();
+                        renderWeightLogs();
+                        renderHistoryLogs();
+                        showToast('นำเข้าข้อมูลสำเร็จเรียบร้อย');
+                    } else {
+                        showToast('รูปแบบไฟล์ไม่ถูกต้อง');
+                    }
+                } catch (err) {
+                    console.error(err);
+                    showToast('เกิดข้อผิดพลาดในการอ่านไฟล์');
+                }
+                event.target.value = '';
+            };
+            reader.readAsText(file);
+        }
+
+        function saveStateToStorage() {
+            try {
+                localStorage.setItem(STATE_KEY, JSON.stringify(appState));
+            } catch (e) {
+                console.error('Save failed:', e);
+            }
+        }
+
+        function loadStateFromStorage() {
+            try {
+                const stored = localStorage.getItem(STATE_KEY);
+                if (stored) {
+                    const parsed = JSON.parse(stored);
+                    appState = { ...appState, ...parsed };
+                    if (!appState.foodMemory) {
+                        appState.foodMemory = [];
+                    }
+                }
+            } catch (e) {
+                console.error('Load failed:', e);
+            }
+        }
+    </script>
+</body>
+</html>
