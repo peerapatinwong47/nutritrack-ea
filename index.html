@@ -454,30 +454,23 @@
                     </form>
                 </div>
 
-                <!-- Data Management & Word Report Export Card -->
+                <!-- Data Management Card -->
                 <div class="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm space-y-3">
                     <div class="flex items-center space-x-2 border-b border-slate-100 pb-2">
-                        <i class="fa-solid fa-file-export text-emerald-600 text-lg"></i>
-                        <h3 class="text-sm font-bold text-slate-800">จัดการข้อมูล & สรุปรายงาน</h3>
+                        <i class="fa-solid fa-database text-emerald-600 text-lg"></i>
+                        <h3 class="text-sm font-bold text-slate-800">จัดการข้อมูล</h3>
                     </div>
 
-                    <div class="grid grid-cols-1 gap-2 pt-1">
-                        <button type="button" onclick="exportToWord()" class="w-full py-2.5 bg-blue-600 hover:bg-blue-700 active:scale-[0.99] text-white font-bold rounded-xl text-xs flex items-center justify-center space-x-2 shadow-sm transition">
-                            <i class="fa-solid fa-file-word text-sm"></i>
-                            <span>ส่งออกสรุปเป็นไฟล์ Word (.doc)</span>
+                    <div class="grid grid-cols-2 gap-2 pt-1">
+                        <button type="button" onclick="exportBackupJSON()" class="py-2.5 bg-slate-800 hover:bg-slate-900 active:scale-[0.99] text-white font-bold rounded-xl text-xs flex items-center justify-center space-x-1.5 shadow-sm transition">
+                            <i class="fa-solid fa-download"></i>
+                            <span>สำรองข้อมูล (.json)</span>
                         </button>
 
-                        <div class="grid grid-cols-2 gap-2 pt-1">
-                            <button type="button" onclick="exportBackupJSON()" class="py-2.5 bg-slate-800 hover:bg-slate-900 active:scale-[0.99] text-white font-bold rounded-xl text-xs flex items-center justify-center space-x-1.5 shadow-sm transition">
-                                <i class="fa-solid fa-download"></i>
-                                <span>สำรองข้อมูล (.json)</span>
-                            </button>
-
-                            <button type="button" onclick="triggerImportJSON()" class="py-2.5 bg-slate-100 hover:bg-slate-200 active:scale-[0.99] text-slate-700 font-bold rounded-xl text-xs flex items-center justify-center space-x-1.5 border border-slate-200 transition">
-                                <i class="fa-solid fa-upload"></i>
-                                <span>นำเข้าข้อมูล (Load)</span>
-                            </button>
-                        </div>
+                        <button type="button" onclick="triggerImportJSON()" class="py-2.5 bg-slate-100 hover:bg-slate-200 active:scale-[0.99] text-slate-700 font-bold rounded-xl text-xs flex items-center justify-center space-x-1.5 border border-slate-200 transition">
+                            <i class="fa-solid fa-upload"></i>
+                            <span>นำเข้าข้อมูล (Load)</span>
+                        </button>
                     </div>
 
                     <input type="file" id="import-file-input" accept=".json" onchange="handleFileImport(event)" class="hidden">
@@ -647,36 +640,50 @@
 
         let weightChartInstance = null;
 
+        // Image compression helper to prevent mobile browser RAM crash and localStorage quota error
+        function compressAndResizeImage(file, maxWidth, maxHeight, quality, callback) {
+            if (!file || !file.type.startsWith('image/')) {
+                callback(null);
+                return;
+            }
+            const reader = new FileReader();
+            reader.onerror = function() { callback(null); };
+            reader.onload = function(e) {
+                const img = new Image();
+                img.onerror = function() { callback(null); };
+                img.onload = function() {
+                    let width = img.width;
+                    let height = img.height;
+
+                    if (width > maxWidth || height > maxHeight) {
+                        if (width / height > maxWidth / maxHeight) {
+                            height = Math.round((height * maxWidth) / width);
+                            width = maxWidth;
+                        } else {
+                            width = Math.round((width * maxHeight) / height);
+                            height = maxHeight;
+                        }
+                    }
+
+                    const canvas = document.createElement('canvas');
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, width, height);
+
+                    const compressedBase64 = canvas.toDataURL('image/jpeg', quality);
+                    callback(compressedBase64);
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
         function escapeHtml(str) {
             return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
         }
 
         window.addEventListener('DOMContentLoaded', () => {
-            document.addEventListener('touchstart', function (e) {
-                if (e.touches.length > 1) {
-                    e.preventDefault();
-                }
-            }, { passive: false });
-
-            let lastTouchEnd = 0;
-            document.addEventListener('touchend', function (e) {
-                const now = Date.now();
-                if (now - lastTouchEnd <= 300) {
-                    e.preventDefault();
-                }
-                lastTouchEnd = now;
-            }, false);
-
-            document.addEventListener('gesturestart', function (e) {
-                e.preventDefault();
-            });
-
-            document.addEventListener('wheel', function (e) {
-                if (e.ctrlKey) {
-                    e.preventDefault();
-                }
-            }, { passive: false });
-
             loadStateFromStorage();
             
             const datePicker = document.getElementById('date-picker');
@@ -817,7 +824,6 @@
             const calculatedTDEE = Math.round((bmr * activityFactor) + eee);
             
             // Calculate corresponding EA when eating at exact TDEE
-            // EA_TDEE = (TDEE - EEE) / FFM
             const calculatedTDEEEA = (calculatedTDEE - eee) / ffm;
 
             document.getElementById('display-tdee-val').innerText = calculatedTDEE.toLocaleString() + ' kcal';
@@ -1003,14 +1009,17 @@
             const file = e.target.files[0];
             if (!file) return;
 
-            const reader = new FileReader();
-            reader.onload = function(evt) {
-                currentFoodImage = evt.target.result;
-                document.getElementById('food-img-preview').src = currentFoodImage;
-                document.getElementById('food-img-preview-container').classList.remove('hidden');
-                document.getElementById('food-img-label-text').innerText = 'เปลี่ยนรูปภาพ';
-            };
-            reader.readAsDataURL(file);
+            showToast('กำลังประมวลผลและย่อขนาดรูปภาพ...');
+            compressAndResizeImage(file, 600, 600, 0.6, function(compressedBase64) {
+                if (compressedBase64) {
+                    currentFoodImage = compressedBase64;
+                    document.getElementById('food-img-preview').src = currentFoodImage;
+                    document.getElementById('food-img-preview-container').classList.remove('hidden');
+                    document.getElementById('food-img-label-text').innerText = 'เปลี่ยนรูปภาพ';
+                } else {
+                    showToast('ไม่สามารถโหลดรูปภาพได้');
+                }
+            });
         }
 
         function clearFoodImagePreview() {
@@ -1025,13 +1034,16 @@
             const file = e.target.files[0];
             if (!file) return;
 
-            const reader = new FileReader();
-            reader.onload = function(evt) {
-                editFoodImage = evt.target.result;
-                document.getElementById('edit-img-preview').src = editFoodImage;
-                document.getElementById('edit-img-preview-container').classList.remove('hidden');
-            };
-            reader.readAsDataURL(file);
+            showToast('กำลังประมวลผลรูปภาพ...');
+            compressAndResizeImage(file, 600, 600, 0.6, function(compressedBase64) {
+                if (compressedBase64) {
+                    editFoodImage = compressedBase64;
+                    document.getElementById('edit-img-preview').src = editFoodImage;
+                    document.getElementById('edit-img-preview-container').classList.remove('hidden');
+                } else {
+                    showToast('ไม่สามารถโหลดรูปภาพได้');
+                }
+            });
         }
 
         function clearEditFoodImagePreview() {
@@ -1355,68 +1367,6 @@
             });
         }
 
-        function generateWeightChartImageBase64() {
-            const sorted = [...appState.weights].sort((a, b) => new Date(a.date) - new Date(b.date));
-            if (sorted.length === 0) return null;
-
-            const canvas = document.createElement('canvas');
-            canvas.width = 650;
-            canvas.height = 320;
-            const ctx = canvas.getContext('2d');
-
-            ctx.fillStyle = '#ffffff';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-            const labels = sorted.map(w => w.date);
-            const dataVals = sorted.map(w => w.weight);
-
-            const tempChart = new Chart(ctx, {
-                type: 'line',
-                data: {
-                    labels: labels,
-                    datasets: [{
-                        label: 'น้ำหนัก (kg)',
-                        data: dataVals,
-                        borderColor: '#16a34a',
-                        backgroundColor: 'rgba(22, 163, 74, 0.12)',
-                        fill: true,
-                        tension: 0.3,
-                        pointRadius: 6,
-                        pointBackgroundColor: '#15803d',
-                        borderWidth: 3
-                    }]
-                },
-                options: {
-                    animation: false,
-                    responsive: false,
-                    plugins: {
-                        legend: { display: false },
-                        title: {
-                            display: true,
-                            text: 'กราฟแสดงแนวโน้มน้ำหนักตัว (Weight Progress)',
-                            color: '#0f172a',
-                            font: { size: 14, weight: 'bold', family: 'sans-serif' },
-                            padding: { bottom: 15 }
-                        }
-                    },
-                    scales: {
-                        y: {
-                            grid: { color: '#f1f5f9' },
-                            ticks: { color: '#64748b', font: { size: 11 } }
-                        },
-                        x: {
-                            grid: { display: false },
-                            ticks: { color: '#64748b', font: { size: 11 } }
-                        }
-                    }
-                }
-            });
-
-            const dataUrl = canvas.toDataURL('image/png');
-            tempChart.destroy();
-            return dataUrl;
-        }
-
         function renderHistoryLogs() {
             const container = document.getElementById('history-logs-container');
             if (!container) return;
@@ -1556,202 +1506,6 @@
             showToast('บันทึกการตั้งค่าเป้าหมายเรียบร้อย');
         }
 
-        function exportToWord() {
-            const today = appState.selectedDate || getTodayString();
-            const ffm = document.getElementById('display-ffm')?.innerText || '-';
-            
-            // Generate chart image
-            const chartImageBase64 = generateWeightChartImageBase64();
-            let chartSectionHtml = '';
-            if (chartImageBase64) {
-                chartSectionHtml = `
-                <div class="card" style="text-align: center; margin-top: 15px; padding: 15px;">
-                    <div class="section-title">📊 กราฟแสดงแนวโน้มน้ำหนักตัว</div>
-                    <img src="${chartImageBase64}" style="width: 100%; max-width: 580px; height: auto; border-radius: 8px; margin-top: 10px;" />
-                </div>`;
-            }
-
-            const grouped = {};
-            appState.meals.forEach(m => {
-                if (!grouped[m.date]) grouped[m.date] = [];
-                grouped[m.date].push(m);
-            });
-            const sortedDates = Object.keys(grouped).sort((a, b) => new Date(b) - new Date(a));
-
-            let mealsTableHtml = '';
-            if (sortedDates.length === 0) {
-                mealsTableHtml = '<tr><td colspan="5" style="text-align:center; color:#94a3b8; padding:12px;">ไม่มีประวัติการบันทึกอาหาร</td></tr>';
-            } else {
-                sortedDates.forEach(d => {
-                    const list = grouped[d];
-                    const dayCal = list.reduce((sum, item) => sum + item.cal, 0);
-                    mealsTableHtml += `<tr style="background-color:#f1f5f9; font-weight:bold;"><td colspan="5" style="padding:8px 10px; color:#1e293b;">📅 วันที่ ${d} (พลังงานรวม: ${dayCal} kcal)</td></tr>`;
-                    list.forEach(m => {
-                        mealsTableHtml += `
-                            <tr>
-                                <td style="padding:8px 10px;">${escapeHtml(m.name)}</td>
-                                <td style="padding:8px 10px;">${m.carb} g <span style="color:#64748b; font-size:9pt;">(${(m.carb/30).toFixed(1)} ส่วน)</span></td>
-                                <td style="padding:8px 10px;">${m.protein} g <span style="color:#64748b; font-size:9pt;">(${(m.protein/25).toFixed(1)} ส่วน)</span></td>
-                                <td style="padding:8px 10px;">${m.fat} g <span style="color:#64748b; font-size:9pt;">(${(m.fat/15).toFixed(1)} ส่วน)</span></td>
-                                <td style="padding:8px 10px; text-align:right;"><b>${m.cal} kcal</b></td>
-                            </tr>
-                        `;
-                    });
-                });
-            }
-
-            const sortedWeights = [...appState.weights].sort((a, b) => new Date(b.date) - new Date(a.date));
-            let weightsTableHtml = sortedWeights.length === 0 ? '<tr><td colspan="2" style="text-align:center; color:#94a3b8; padding:12px;">ไม่มีประวัติน้ำหนัก</td></tr>' : 
-                sortedWeights.map(w => `<tr><td style="padding:8px 10px;">${w.date}</td><td style="padding:8px 10px; text-align:right;"><b>${w.weight.toFixed(1)} kg</b></td></tr>`).join('');
-
-            const wordDocHtml = `<html xmlns:o="urn:schemas-microsoft-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
-<head>
-<meta charset="utf-8">
-<title>NutriTrack EA Summary Report</title>
-<!--[if gte mso 9]>
-<xml>
- <w:WordDocument>
-  <w:View>Print</w:View>
-  <w:Zoom>100</w:Zoom>
-  <w:DoNotOptimizeForBrowser/>
- </w:WordDocument>
-</xml>
-<![endif]-->
-<style>
-    @page { margin: 1.2cm; }
-    body { font-family: 'Segoe UI', 'Tahoma', 'Arial', sans-serif; background-color: #ffffff; color: #0f172a; line-height: 1.5; font-size: 10.5pt; }
-    .header { border-bottom: 3px solid #16a34a; padding-bottom: 12px; margin-bottom: 20px; }
-    .title { color: #16a34a; font-size: 20pt; font-weight: bold; margin: 0; }
-    .subtitle { color: #64748b; font-size: 10pt; margin-top: 4px; }
-    
-    .grid { width: 100%; border-collapse: collapse; margin-bottom: 15px; }
-    .stat-card { background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; text-align: center; }
-    .stat-label { font-size: 9pt; color: #64748b; font-weight: 600; text-transform: uppercase; }
-    .stat-value { font-size: 16pt; font-weight: bold; color: #16a34a; margin-top: 2px; }
-    
-    .card { background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 15px; margin-bottom: 20px; }
-    .section-title { font-size: 12pt; font-weight: bold; color: #0f172a; border-bottom: 1.5px solid #16a34a; padding-bottom: 5px; margin-bottom: 12px; }
-    
-    table.data-table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 10pt; }
-    table.data-table th, table.data-table td { border: 1px solid #e2e8f0; padding: 8px 10px; text-align: left; }
-    table.data-table th { background-color: #f8fafc; color: #475569; font-weight: bold; font-size: 9.5pt; }
-    
-    .badge { background-color: #dcfce7; color: #15803d; padding: 3px 8px; border-radius: 12px; font-weight: bold; font-size: 9pt; }
-</style>
-</head>
-<body>
-    <div class="header">
-        <div class="title">NutriTrack EA</div>
-        <div class="subtitle">รายงานสรุปโภชนาการ สมดุลพลังงาน (EA) และพัฒนาการน้ำหนัก | ออกรายงานวันที่: <b>${today}</b></div>
-    </div>
-
-    <!-- Cards Summary -->
-    <table class="grid" style="margin-bottom: 20px;">
-        <tr>
-            <td width="24%" style="padding: 4px;">
-                <div class="stat-card">
-                    <div class="stat-label">พลังงานเป้าหมาย (EI)</div>
-                    <div class="stat-value">${appState.profile.targetCal} <span style="font-size:9pt; font-weight:normal;">kcal</span></div>
-                </div>
-            </td>
-            <td width="24%" style="padding: 4px;">
-                <div class="stat-card">
-                    <div class="stat-label">TDEE เผาผลาญ/วัน</div>
-                    <div class="stat-value" style="color:#0284c7;">${appState.profile.calculatedTDEE} <span style="font-size:9pt; font-weight:normal;">kcal</span></div>
-                </div>
-            </td>
-            <td width="24%" style="padding: 4px;">
-                <div class="stat-card">
-                    <div class="stat-label">เป้าหมาย EA</div>
-                    <div class="stat-value" style="color:#d97706;">${appState.profile.targetEA} <span style="font-size:9pt; font-weight:normal;">kcal/kg FFM</span></div>
-                </div>
-            </td>
-            <td width="24%" style="padding: 4px;">
-                <div class="stat-card">
-                    <div class="stat-label">Fat-Free Mass (FFM)</div>
-                    <div class="stat-value" style="color:#475569;">${ffm} <span style="font-size:9pt; font-weight:normal;">kg</span></div>
-                </div>
-            </td>
-        </tr>
-    </table>
-
-    <!-- Profile & Target Details -->
-    <div class="card">
-        <div class="section-title">👤 ข้อมูลบุคคล & เป้าหมายสารอาหาร</div>
-        <table class="data-table">
-            <tr>
-                <th width="20%">เพศ / อายุ</th><td width="30%">${appState.profile.gender === 'male' ? 'ชาย' : 'หญิง'} (${appState.profile.age} ปี)</td>
-                <th width="20%">ส่วนสูง / น้ำหนัก</th><td width="30%">${appState.profile.height} ซม. / ${appState.profile.weight} kg</td>
-            </tr>
-            <tr>
-                <th>% Body Fat</th><td>${appState.profile.bodyFat !== null && appState.profile.bodyFat !== undefined ? appState.profile.bodyFat + '%' : 'ค่าเฉลี่ย'}</td>
-                <th>พลังงานออกกำลังกาย (EEE)</th><td>${appState.profile.eee} kcal / วัน</td>
-            </tr>
-            <tr>
-                <th>คาร์โบไฮเดรตเป้าหมาย</th><td colspan="3"><b>${appState.profile.targetCarb} g</b> (${(appState.profile.targetCarb/30).toFixed(1)} ส่วน / Exchange)</td>
-            </tr>
-            <tr>
-                <th>โปรตีนเป้าหมาย</th><td colspan="3"><b>${appState.profile.targetProtein} g</b> (${(appState.profile.targetProtein/25).toFixed(1)} ส่วน / Exchange)</td>
-            </tr>
-            <tr>
-                <th>ไขมันเป้าหมาย</th><td colspan="3"><b>${appState.profile.targetFat} g</b> (${(appState.profile.targetFat/15).toFixed(1)} ส่วน / Exchange)</td>
-            </tr>
-        </table>
-    </div>
-
-    <!-- Weight Graph Chart Section -->
-    ${chartSectionHtml}
-
-    <!-- Food Log History -->
-    <div class="card">
-        <div class="section-title">🍽️ ประวัติการบันทึกอาหาร</div>
-        <table class="data-table">
-            <thead>
-                <tr>
-                    <th width="35%">ชื่อเมนูอาหาร</th>
-                    <th width="18%">คาร์โบไฮเดรต</th>
-                    <th width="18%">โปรตีน</th>
-                    <th width="18%">ไขมัน</th>
-                    <th width="11%" style="text-align:right;">พลังงาน</th>
-                </tr>
-            </thead>
-            <tbody>
-                ${mealsTableHtml}
-            </tbody>
-        </table>
-    </div>
-
-    <!-- Weight History Table -->
-    <div class="card">
-        <div class="section-title">⚖️ ประวัติน้ำหนักตัวย้อนหลัง</div>
-        <table class="data-table" style="max-width: 400px;">
-            <thead>
-                <tr>
-                    <th>วันที่</th>
-                    <th style="text-align:right;">น้ำหนักตัว (kg)</th>
-                </tr>
-            </thead>
-            <tbody>
-                ${weightsTableHtml}
-            </tbody>
-        </table>
-    </div>
-
-</body>
-</html>`;
-
-            const blob = new Blob(['\ufeff', wordDocHtml], { type: 'application/msword;charset=utf-8' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `NutriTrack_Report_${today}.doc`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-            showToast('ส่งออกรายงาน Word เรียบร้อย');
-        }
-
         function exportBackupJSON() {
             const jsonStr = JSON.stringify(appState, null, 2);
             const blob = new Blob([jsonStr], { type: 'application/json;charset=utf-8' });
@@ -1762,8 +1516,11 @@
             a.download = `NutriTrack_Backup_${getTodayString()}.json`;
             document.body.appendChild(a);
             a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
+            
+            setTimeout(() => {
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }, 500);
             
             showToast('ดาวน์โหลดไฟล์สำรองข้อมูลเรียบร้อย');
         }
@@ -1817,7 +1574,29 @@
             try {
                 localStorage.setItem(STATE_KEY, JSON.stringify(appState));
             } catch (e) {
-                console.error('Save failed:', e);
+                console.warn('Save failed or quota exceeded:', e);
+                // If quota exceeded (5MB limit in localStorage), auto purge images from older meals
+                if (e.name === 'QuotaExceededError' || e.code === 22 || e.code === 1014) {
+                    try {
+                        const trimmedState = JSON.parse(JSON.stringify(appState));
+                        if (trimmedState.meals && trimmedState.meals.length > 0) {
+                            // Purge image base64 data from meals except top 5 newest
+                            const sortedMeals = [...trimmedState.meals].sort((a, b) => new Date(b.date) - new Date(a.date));
+                            const keepImageIds = new Set(sortedMeals.slice(0, 5).map(m => m.id));
+                            
+                            trimmedState.meals.forEach(m => {
+                                if (!keepImageIds.has(m.id)) {
+                                    delete m.image;
+                                }
+                            });
+                        }
+                        localStorage.setItem(STATE_KEY, JSON.stringify(trimmedState));
+                        appState = trimmedState;
+                        showToast('พื้นที่จัดเก็บเต็ม ระบบได้ลบไฟล์รูปมื้อเก่าๆ ออกให้แล้ว');
+                    } catch (retryErr) {
+                        console.error('Retry save failed:', retryErr);
+                    }
+                }
             }
         }
 
