@@ -1355,6 +1355,68 @@
             });
         }
 
+        function generateWeightChartImageBase64() {
+            const sorted = [...appState.weights].sort((a, b) => new Date(a.date) - new Date(b.date));
+            if (sorted.length === 0) return null;
+
+            const canvas = document.createElement('canvas');
+            canvas.width = 650;
+            canvas.height = 320;
+            const ctx = canvas.getContext('2d');
+
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            const labels = sorted.map(w => w.date);
+            const dataVals = sorted.map(w => w.weight);
+
+            const tempChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'น้ำหนัก (kg)',
+                        data: dataVals,
+                        borderColor: '#16a34a',
+                        backgroundColor: 'rgba(22, 163, 74, 0.12)',
+                        fill: true,
+                        tension: 0.3,
+                        pointRadius: 6,
+                        pointBackgroundColor: '#15803d',
+                        borderWidth: 3
+                    }]
+                },
+                options: {
+                    animation: false,
+                    responsive: false,
+                    plugins: {
+                        legend: { display: false },
+                        title: {
+                            display: true,
+                            text: 'กราฟแสดงแนวโน้มน้ำหนักตัว (Weight Progress)',
+                            color: '#0f172a',
+                            font: { size: 14, weight: 'bold', family: 'sans-serif' },
+                            padding: { bottom: 15 }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            grid: { color: '#f1f5f9' },
+                            ticks: { color: '#64748b', font: { size: 11 } }
+                        },
+                        x: {
+                            grid: { display: false },
+                            ticks: { color: '#64748b', font: { size: 11 } }
+                        }
+                    }
+                }
+            });
+
+            const dataUrl = canvas.toDataURL('image/png');
+            tempChart.destroy();
+            return dataUrl;
+        }
+
         function renderHistoryLogs() {
             const container = document.getElementById('history-logs-container');
             if (!container) return;
@@ -1498,6 +1560,17 @@
             const today = appState.selectedDate || getTodayString();
             const ffm = document.getElementById('display-ffm')?.innerText || '-';
             
+            // Generate chart image
+            const chartImageBase64 = generateWeightChartImageBase64();
+            let chartSectionHtml = '';
+            if (chartImageBase64) {
+                chartSectionHtml = `
+                <div class="card" style="text-align: center; margin-top: 15px; padding: 15px;">
+                    <div class="section-title">📊 กราฟแสดงแนวโน้มน้ำหนักตัว</div>
+                    <img src="${chartImageBase64}" style="width: 100%; max-width: 580px; height: auto; border-radius: 8px; margin-top: 10px;" />
+                </div>`;
+            }
+
             const grouped = {};
             appState.meals.forEach(m => {
                 if (!grouped[m.date]) grouped[m.date] = [];
@@ -1507,20 +1580,20 @@
 
             let mealsTableHtml = '';
             if (sortedDates.length === 0) {
-                mealsTableHtml = '<tr><td colspan="5" style="text-align:center; color:#94a3b8; padding:10px;">ไม่มีรายการอาหาร</td></tr>';
+                mealsTableHtml = '<tr><td colspan="5" style="text-align:center; color:#94a3b8; padding:12px;">ไม่มีประวัติการบันทึกอาหาร</td></tr>';
             } else {
                 sortedDates.forEach(d => {
                     const list = grouped[d];
                     const dayCal = list.reduce((sum, item) => sum + item.cal, 0);
-                    mealsTableHtml += `<tr style="background-color:#e2e8f0; font-weight:bold;"><td colspan="5" style="padding:6px 10px;">📅 วันที่ ${d} (รวม ${dayCal} kcal)</td></tr>`;
+                    mealsTableHtml += `<tr style="background-color:#f1f5f9; font-weight:bold;"><td colspan="5" style="padding:8px 10px; color:#1e293b;">📅 วันที่ ${d} (พลังงานรวม: ${dayCal} kcal)</td></tr>`;
                     list.forEach(m => {
                         mealsTableHtml += `
                             <tr>
-                                <td style="padding-left:15px; padding:6px 10px;">${escapeHtml(m.name)}</td>
-                                <td style="padding:6px 10px;">${m.carb} g (${(m.carb/30).toFixed(1)} ส่วน)</td>
-                                <td style="padding:6px 10px;">${m.protein} g (${(m.protein/25).toFixed(1)} ส่วน)</td>
-                                <td style="padding:6px 10px;">${m.fat} g (${(m.fat/15).toFixed(1)} ส่วน)</td>
-                                <td style="padding:6px 10px;"><b>${m.cal} kcal</b></td>
+                                <td style="padding:8px 10px;">${escapeHtml(m.name)}</td>
+                                <td style="padding:8px 10px;">${m.carb} g <span style="color:#64748b; font-size:9pt;">(${(m.carb/30).toFixed(1)} ส่วน)</span></td>
+                                <td style="padding:8px 10px;">${m.protein} g <span style="color:#64748b; font-size:9pt;">(${(m.protein/25).toFixed(1)} ส่วน)</span></td>
+                                <td style="padding:8px 10px;">${m.fat} g <span style="color:#64748b; font-size:9pt;">(${(m.fat/15).toFixed(1)} ส่วน)</span></td>
+                                <td style="padding:8px 10px; text-align:right;"><b>${m.cal} kcal</b></td>
                             </tr>
                         `;
                     });
@@ -1528,8 +1601,8 @@
             }
 
             const sortedWeights = [...appState.weights].sort((a, b) => new Date(b.date) - new Date(a.date));
-            let weightsTableHtml = sortedWeights.length === 0 ? '<tr><td colspan="2" style="text-align:center; color:#94a3b8; padding:10px;">ไม่มีประวัติน้ำหนัก</td></tr>' : 
-                sortedWeights.map(w => `<tr><td style="padding:6px 10px;">${w.date}</td><td style="padding:6px 10px;"><b>${w.weight.toFixed(1)} kg</b></td></tr>`).join('');
+            let weightsTableHtml = sortedWeights.length === 0 ? '<tr><td colspan="2" style="text-align:center; color:#94a3b8; padding:12px;">ไม่มีประวัติน้ำหนัก</td></tr>' : 
+                sortedWeights.map(w => `<tr><td style="padding:8px 10px;">${w.date}</td><td style="padding:8px 10px; text-align:right;"><b>${w.weight.toFixed(1)} kg</b></td></tr>`).join('');
 
             const wordDocHtml = `<html xmlns:o="urn:schemas-microsoft-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
 <head>
@@ -1545,84 +1618,125 @@
 </xml>
 <![endif]-->
 <style>
-    body { font-family: 'Tahoma', 'Segoe UI', Arial, sans-serif; padding: 20px; color: #1e293b; line-height: 1.5; }
-    h1 { color: #16a34a; font-size: 20pt; margin-bottom: 5px; font-weight: bold; }
-    h2 { color: #0f172a; font-size: 13pt; border-bottom: 2px solid #16a34a; padding-bottom: 4px; margin-top: 22px; font-weight: bold; }
-    table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 10pt; }
-    th, td { border: 1px solid #cbd5e1; padding: 8px 10px; text-align: left; }
-    th { background-color: #f1f5f9; color: #334155; font-weight: bold; }
-    .highlight { font-weight: bold; color: #16a34a; }
+    @page { margin: 1.2cm; }
+    body { font-family: 'Segoe UI', 'Tahoma', 'Arial', sans-serif; background-color: #ffffff; color: #0f172a; line-height: 1.5; font-size: 10.5pt; }
+    .header { border-bottom: 3px solid #16a34a; padding-bottom: 12px; margin-bottom: 20px; }
+    .title { color: #16a34a; font-size: 20pt; font-weight: bold; margin: 0; }
+    .subtitle { color: #64748b; font-size: 10pt; margin-top: 4px; }
+    
+    .grid { width: 100%; border-collapse: collapse; margin-bottom: 15px; }
+    .stat-card { background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; text-align: center; }
+    .stat-label { font-size: 9pt; color: #64748b; font-weight: 600; text-transform: uppercase; }
+    .stat-value { font-size: 16pt; font-weight: bold; color: #16a34a; margin-top: 2px; }
+    
+    .card { background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 15px; margin-bottom: 20px; }
+    .section-title { font-size: 12pt; font-weight: bold; color: #0f172a; border-bottom: 1.5px solid #16a34a; padding-bottom: 5px; margin-bottom: 12px; }
+    
+    table.data-table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 10pt; }
+    table.data-table th, table.data-table td { border: 1px solid #e2e8f0; padding: 8px 10px; text-align: left; }
+    table.data-table th { background-color: #f8fafc; color: #475569; font-weight: bold; font-size: 9.5pt; }
+    
+    .badge { background-color: #dcfce7; color: #15803d; padding: 3px 8px; border-radius: 12px; font-weight: bold; font-size: 9pt; }
 </style>
 </head>
 <body>
-    <h1>NutriTrack EA - รายงานสรุปโภชนาการและการออกกำลังกาย</h1>
-    <p style="font-size:10pt; color:#64748b;"><b>วันที่ออกรายงาน:</b> ${today}</p>
-    
-    <h2>1. ข้อมูลส่วนตัว & ค่า TDEE / EA</h2>
-    <table>
+    <div class="header">
+        <div class="title">NutriTrack EA</div>
+        <div class="subtitle">รายงานสรุปโภชนาการ สมดุลพลังงาน (EA) และพัฒนาการน้ำหนัก | ออกรายงานวันที่: <b>${today}</b></div>
+    </div>
+
+    <!-- Cards Summary -->
+    <table class="grid" style="margin-bottom: 20px;">
         <tr>
-            <th width="20%">เพศ</th><td width="30%">${appState.profile.gender === 'male' ? 'ชาย' : 'หญิง'}</td>
-            <th width="20%">อายุ</th><td width="30%">${appState.profile.age} ปี</td>
-        </tr>
-        <tr>
-            <th>ส่วนสูง</th><td>${appState.profile.height} ซม.</td>
-            <th>น้ำหนักปัจจุบัน</th><td>${appState.profile.weight} กิโลกรัม</td>
-        </tr>
-        <tr>
-            <th>% Body Fat</th><td>${appState.profile.bodyFat !== null && appState.profile.bodyFat !== undefined ? appState.profile.bodyFat + '%' : 'ค่าเฉลี่ย'}</td>
-            <th>Fat-Free Mass (FFM)</th><td>${ffm} kg</td>
-        </tr>
-        <tr>
-            <th>TDEE (เผาผลาญต่อวัน)</th><td>${appState.profile.calculatedTDEE} kcal</td>
-            <th>EA ที่ TDEE</th><td>${appState.profile.calculatedTDEEEA} kcal/kg FFM</td>
-        </tr>
-        <tr>
-            <th>เป้าหมาย EA ที่เลือก</th><td>${appState.profile.targetEA} kcal/kg FFM</td>
-            <th>EEE (แคลออกกำลังกายเฉลี่ย)</th><td>${appState.profile.eee} kcal/วัน</td>
-        </tr>
-        <tr style="background-color:#f0fdf4;">
-            <th>เป้าหมายพลังงานรวม (EI)</th>
-            <td colspan="3"><b class="highlight" style="font-size:12pt;">${appState.profile.targetCal} kcal / วัน</b></td>
-        </tr>
-        <tr>
-            <th>เป้าหมายคาร์โบไฮเดรต</th><td colspan="3">${appState.profile.targetCarb}g (${(appState.profile.targetCarb/30).toFixed(1)} ส่วน)</td>
-        </tr>
-        <tr>
-            <th>เป้าหมายโปรตีน</th><td colspan="3">${appState.profile.targetProtein}g (${(appState.profile.targetProtein/25).toFixed(1)} ส่วน)</td>
-        </tr>
-        <tr>
-            <th>เป้าหมายไขมัน</th><td colspan="3">${appState.profile.targetFat}g (${(appState.profile.targetFat/15).toFixed(1)} ส่วน)</td>
+            <td width="24%" style="padding: 4px;">
+                <div class="stat-card">
+                    <div class="stat-label">พลังงานเป้าหมาย (EI)</div>
+                    <div class="stat-value">${appState.profile.targetCal} <span style="font-size:9pt; font-weight:normal;">kcal</span></div>
+                </div>
+            </td>
+            <td width="24%" style="padding: 4px;">
+                <div class="stat-card">
+                    <div class="stat-label">TDEE เผาผลาญ/วัน</div>
+                    <div class="stat-value" style="color:#0284c7;">${appState.profile.calculatedTDEE} <span style="font-size:9pt; font-weight:normal;">kcal</span></div>
+                </div>
+            </td>
+            <td width="24%" style="padding: 4px;">
+                <div class="stat-card">
+                    <div class="stat-label">เป้าหมาย EA</div>
+                    <div class="stat-value" style="color:#d97706;">${appState.profile.targetEA} <span style="font-size:9pt; font-weight:normal;">kcal/kg FFM</span></div>
+                </div>
+            </td>
+            <td width="24%" style="padding: 4px;">
+                <div class="stat-card">
+                    <div class="stat-label">Fat-Free Mass (FFM)</div>
+                    <div class="stat-value" style="color:#475569;">${ffm} <span style="font-size:9pt; font-weight:normal;">kg</span></div>
+                </div>
+            </td>
         </tr>
     </table>
 
-    <h2>2. ประวัติการบันทึกมื้ออาหาร</h2>
-    <table>
-        <thead>
+    <!-- Profile & Target Details -->
+    <div class="card">
+        <div class="section-title">👤 ข้อมูลบุคคล & เป้าหมายสารอาหาร</div>
+        <table class="data-table">
             <tr>
-                <th width="35%">ชื่อเมนูอาหาร</th>
-                <th width="18%">คาร์โบไฮเดรต</th>
-                <th width="18%">โปรตีน</th>
-                <th width="18%">ไขมัน</th>
-                <th width="11%">พลังงาน</th>
+                <th width="20%">เพศ / อายุ</th><td width="30%">${appState.profile.gender === 'male' ? 'ชาย' : 'หญิง'} (${appState.profile.age} ปี)</td>
+                <th width="20%">ส่วนสูง / น้ำหนัก</th><td width="30%">${appState.profile.height} ซม. / ${appState.profile.weight} kg</td>
             </tr>
-        </thead>
-        <tbody>
-            ${mealsTableHtml}
-        </tbody>
-    </table>
+            <tr>
+                <th>% Body Fat</th><td>${appState.profile.bodyFat !== null && appState.profile.bodyFat !== undefined ? appState.profile.bodyFat + '%' : 'ค่าเฉลี่ย'}</td>
+                <th>พลังงานออกกำลังกาย (EEE)</th><td>${appState.profile.eee} kcal / วัน</td>
+            </tr>
+            <tr>
+                <th>คาร์โบไฮเดรตเป้าหมาย</th><td colspan="3"><b>${appState.profile.targetCarb} g</b> (${(appState.profile.targetCarb/30).toFixed(1)} ส่วน / Exchange)</td>
+            </tr>
+            <tr>
+                <th>โปรตีนเป้าหมาย</th><td colspan="3"><b>${appState.profile.targetProtein} g</b> (${(appState.profile.targetProtein/25).toFixed(1)} ส่วน / Exchange)</td>
+            </tr>
+            <tr>
+                <th>ไขมันเป้าหมาย</th><td colspan="3"><b>${appState.profile.targetFat} g</b> (${(appState.profile.targetFat/15).toFixed(1)} ส่วน / Exchange)</td>
+            </tr>
+        </table>
+    </div>
 
-    <h2>3. ประวัติน้ำหนักตัว</h2>
-    <table style="width:50%;">
-        <thead>
-            <tr>
-                <th>วันที่</th>
-                <th>น้ำหนักตัว (kg)</th>
-            </tr>
-        </thead>
-        <tbody>
-            ${weightsTableHtml}
-        </tbody>
-    </table>
+    <!-- Weight Graph Chart Section -->
+    ${chartSectionHtml}
+
+    <!-- Food Log History -->
+    <div class="card">
+        <div class="section-title">🍽️ ประวัติการบันทึกอาหาร</div>
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th width="35%">ชื่อเมนูอาหาร</th>
+                    <th width="18%">คาร์โบไฮเดรต</th>
+                    <th width="18%">โปรตีน</th>
+                    <th width="18%">ไขมัน</th>
+                    <th width="11%" style="text-align:right;">พลังงาน</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${mealsTableHtml}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Weight History Table -->
+    <div class="card">
+        <div class="section-title">⚖️ ประวัติน้ำหนักตัวย้อนหลัง</div>
+        <table class="data-table" style="max-width: 400px;">
+            <thead>
+                <tr>
+                    <th>วันที่</th>
+                    <th style="text-align:right;">น้ำหนักตัว (kg)</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${weightsTableHtml}
+            </tbody>
+        </table>
+    </div>
+
 </body>
 </html>`;
 
@@ -1635,7 +1749,7 @@
             a.click();
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
-            showToast('ส่งออกไฟล์ Word เรียบร้อย');
+            showToast('ส่งออกรายงาน Word เรียบร้อย');
         }
 
         function exportBackupJSON() {
