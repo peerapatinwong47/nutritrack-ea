@@ -686,9 +686,12 @@
         window.addEventListener('DOMContentLoaded', () => {
             loadStateFromStorage();
             
+            // ตั้งค่าวันที่เริ่มต้นให้เป็น "วันนี้" เสมอเมื่อเปิดแอปใหม่
+            appState.selectedDate = getTodayString();
+
             const datePicker = document.getElementById('date-picker');
             if (datePicker) {
-                datePicker.value = appState.selectedDate || getTodayString();
+                datePicker.value = appState.selectedDate;
                 updateDateDisplayLabel();
             }
 
@@ -780,6 +783,14 @@
             
             picker.value = newStr;
             appState.selectedDate = newStr;
+            saveStateToStorage();
+            updateDateDisplayLabel();
+            renderDashboard();
+        }
+
+        function onDateSelected(val) {
+            appState.selectedDate = val || getTodayString();
+            saveStateToStorage();
             updateDateDisplayLabel();
             renderDashboard();
         }
