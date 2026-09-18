@@ -701,9 +701,9 @@
             if (document.getElementById('prof-weight')) document.getElementById('prof-weight').value = appState.profile.weight || 65;
             if (document.getElementById('prof-bf')) document.getElementById('prof-bf').value = appState.profile.bodyFat !== null && appState.profile.bodyFat !== undefined ? appState.profile.bodyFat : '';
             if (document.getElementById('prof-activity')) document.getElementById('prof-activity').value = appState.profile.activityFactor || 1.375;
-            if (document.getElementById('prof-eee')) document.getElementById('prof-eee').value = appState.profile.eee;
-            if (document.getElementById('prof-ea')) document.getElementById('prof-ea').value = appState.profile.targetEA;
-            if (document.getElementById('prof-prot-ratio')) document.getElementById('prof-prot-ratio').value = appState.profile.proteinRatio;
+            if (document.getElementById('prof-eee')) document.getElementById('prof-eee').value = appState.profile.eee !== undefined ? appState.profile.eee : 300;
+            if (document.getElementById('prof-ea')) document.getElementById('prof-ea').value = appState.profile.targetEA || 30;
+            if (document.getElementById('prof-prot-ratio')) document.getElementById('prof-prot-ratio').value = appState.profile.proteinRatio || 1.8;
             if (document.getElementById('prof-carb-ratio')) {
                 document.getElementById('prof-carb-ratio').value = appState.profile.carbPercent || 60;
             }
@@ -724,49 +724,6 @@
             const month = String(d.getMonth() + 1).padStart(2, '0');
             const day = String(d.getDate()).padStart(2, '0');
             return `${year}-${month}-${day}`;
-        }
-
-        function switchTab(tabId) {
-            const tabs = ['tab-dashboard', 'tab-calc', 'tab-weight', 'tab-history'];
-            tabs.forEach(id => {
-                const el = document.getElementById(id);
-                if (el) el.classList.add('hidden');
-                
-                const navBtn = document.getElementById('nav-' + id);
-                if (navBtn) {
-                    navBtn.classList.remove('text-emerald-600');
-                    navBtn.classList.add('text-slate-400');
-                }
-            });
-
-            const targetEl = document.getElementById(tabId);
-            if (targetEl) targetEl.classList.remove('hidden');
-
-            const targetNav = document.getElementById('nav-' + tabId);
-            if (targetNav) {
-                targetNav.classList.remove('text-slate-400');
-                targetNav.classList.add('text-emerald-600');
-            }
-
-            if (tabId === 'tab-weight') {
-                renderWeightChart();
-            }
-        }
-
-        function updateDateDisplayLabel() {
-            const picker = document.getElementById('date-picker');
-            const display = document.getElementById('current-date-display');
-            if (!picker || !display) return;
-            
-            const selected = picker.value;
-            const today = getTodayString();
-            
-            if (selected === today) {
-                display.innerText = 'วันนี้';
-            } else {
-                const parts = selected.split('-');
-                display.innerText = `${parts[2]}/${parts[1]}/${parts[0]}`;
-            }
         }
 
         function changeDate(delta) {
@@ -791,12 +748,6 @@
         function onDateSelected(val) {
             appState.selectedDate = val || getTodayString();
             saveStateToStorage();
-            updateDateDisplayLabel();
-            renderDashboard();
-        }
-
-        function onDateSelected(val) {
-            appState.selectedDate = val || getTodayString();
             updateDateDisplayLabel();
             renderDashboard();
         }
