@@ -3,6 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, shrink-to-fit=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="NutriTrack">
+    <meta name="mobile-web-app-capable" content="yes">
     <title>NutriTrack - ระบบจดสารอาหาร & คำนวณ TDEE / EA</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -724,6 +728,54 @@
             const month = String(d.getMonth() + 1).padStart(2, '0');
             const day = String(d.getDate()).padStart(2, '0');
             return `${year}-${month}-${day}`;
+        }
+
+        function switchTab(tabId) {
+            const tabs = ['tab-dashboard', 'tab-calc', 'tab-weight', 'tab-history'];
+            tabs.forEach(id => {
+                const section = document.getElementById(id);
+                const navBtn = document.getElementById('nav-' + id);
+                if (section) {
+                    if (id === tabId) {
+                        section.classList.remove('hidden');
+                    } else {
+                        section.classList.add('hidden');
+                    }
+                }
+                if (navBtn) {
+                    if (id === tabId) {
+                        navBtn.classList.remove('text-slate-400', 'hover:text-slate-600');
+                        navBtn.classList.add('text-emerald-600');
+                    } else {
+                        navBtn.classList.remove('text-emerald-600');
+                        navBtn.classList.add('text-slate-400', 'hover:text-slate-600');
+                    }
+                }
+            });
+
+            if (tabId === 'tab-weight') {
+                renderWeightChart();
+            }
+        }
+
+        function updateDateDisplayLabel() {
+            const datePicker = document.getElementById('date-picker');
+            const displayLabel = document.getElementById('current-date-display');
+            if (!datePicker || !displayLabel) return;
+            
+            const selected = datePicker.value;
+            const today = getTodayString();
+            
+            if (selected === today) {
+                displayLabel.innerText = 'วันนี้';
+            } else {
+                const parts = selected.split('-');
+                if (parts.length === 3) {
+                    displayLabel.innerText = `${parts[2]}/${parts[1]}/${parts[0]}`;
+                } else {
+                    displayLabel.innerText = selected;
+                }
+            }
         }
 
         function changeDate(delta) {
